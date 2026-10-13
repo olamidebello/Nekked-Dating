@@ -1,7 +1,7 @@
 import json, os, tempfile, threading, unittest, urllib.request, urllib.error, http.cookiejar
 from datetime import date
 import server
-from matching import overview, compatibility
+from matching import overview, compatibility, eligible
 
 def profile():
     return dict(first_name='Ada',last_name='Bello',birth_date='1990-04-15',birth_time='10:00',birth_location='Lagos',bio='I like meaningful conversations.',discoverable=True,preferences={k:'similar' for k in server.CATEGORIES},answers={k:{'choice':'My reflection','words':['calm','open','curious']} for k in ['animal','color','paradise','box']})
@@ -14,6 +14,23 @@ class MatchingTests(unittest.TestCase):
         p['birth_date']='1990-01-20'; self.assertEqual(overview(p)['sun_sign'],'Aquarius')
     def test_reflections_do_not_rank(self):
         a,b=profile(),profile(); original=compatibility(a,b); b['answers']['animal']['choice']='Anything'; self.assertEqual(original,compatibility(a,b))
+    def test_mutual_preferences(self):
+        a,b=profile(),profile()
+        a.update(gender='woman',seeking='man',min_age=18,max_age=120)
+        b.update(gender='man',seeking='woman',min_age=18,max_age=120)
+        self.assertTrue(eligible(a,b))
+        b['seeking']='man'; self.assertFalse(eligible(a,b))
+        b['seeking']='woman'; a['max_age']=20; self.assertFalse(eligible(a,b))
+    def test_name_and_range_validation(self):
+        p=profile(); p['birth_name']='Ada Middle Bello'
+        self.assertNotEqual(overview(p)['name_number'],overview(profile())['name_number'])
+        p.update(min_age=50,max_age=25)
+        with self.assertRaises(ValueError): server.validate(p)
+        p=profile(); p['birth_name']='中文'; self.assertIsNone(overview(p)['name_number'])
+    def test_goals_affect_alignment(self):
+        a,b=profile(),profile(); a['relationship_goal']=b['relationship_goal']='marriage'
+        aligned=compatibility(a,b)['score']; b['relationship_goal']='friendship'
+        self.assertLess(compatibility(a,b)['score'],aligned)
     def test_underage_rejected(self):
         p=profile(); p['birth_date']=date.today().isoformat()
         with self.assertRaises(ValueError): server.validate(p)
