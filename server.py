@@ -3,7 +3,7 @@ from datetime import date, datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from http.cookies import SimpleCookie
-from matching import overview, compatibility
+from matching import overview, compatibility, eligible
 DB = os.environ.get('NEKKED_DB','nekked.sqlite3')
 CATEGORIES = ['emotional','intimacy','financial','living','moods']
 def connect():
@@ -28,7 +28,22 @@ def validate(p):
         a=q.get(k,{})
         if not isinstance(a.get('choice'),str) or not 1<=len(a['choice'])<=1000: raise ValueError('Complete each reflection.')
         if not isinstance(a.get('words'),list) or len(a['words'])!=3 or any(not isinstance(w,str) or not 1<=len(w.strip())<=80 for w in a['words']): raise ValueError('Provide three words for every reflection.')
-    return {k:p[k] for k in ['first_name','last_name','birth_date','birth_location','bio','discoverable','preferences','answers']} | {'birth_time':p.get('birth_time','')}
+    extra={}
+    allowed={'gender':('woman','man','nonbinary','self-described'),'seeking':('woman','man','nonbinary','any'),'relationship_goal':('long-term','marriage','dating','friendship','open-to-exploring'),'children':('','prefer-not-to-say','want-children','have-children','do-not-want','open'),'smoking':('','prefer-not-to-say','non-smoker','smoker','open')}
+    for k,choices in allowed.items():
+        v=p.get(k,'')
+        if v not in choices and not (v=='' and k not in p): raise ValueError('Invalid '+k)
+        extra[k]=v
+    for k,limit in [('birth_name',200),('current_location',200),('interests',500)]:
+        v=p.get(k,'')
+        if not isinstance(v,str) or len(v)>limit: raise ValueError('Invalid '+k)
+        extra[k]=v.strip()
+    for k,default in [('min_age',18),('max_age',120)]:
+        v=p.get(k,default)
+        if type(v) is not int or not 18<=v<=120: raise ValueError('Invalid age preference.')
+        extra[k]=v
+    if extra['min_age']>extra['max_age']: raise ValueError('Age range is reversed.')
+    return extra | {k:p[k] for k in ['first_name','last_name','birth_date','birth_location','bio','discoverable','preferences','answers']} | {'birth_time':p.get('birth_time','')}
 
 class Handler(BaseHTTPRequestHandler):
     def reply(self,status,data):
@@ -52,7 +67,7 @@ class Handler(BaseHTTPRequestHandler):
                     matches=[]
                     for row in c.execute('SELECT id,profile FROM users WHERE id!=? AND profile IS NOT NULL',(u['id'],)):
                         other=json.loads(row['profile'])
-                        if other['discoverable']: matches.append({'id':row['id'],'name':other['first_name'],'bio':other['bio'],'overview':overview(other),'compatibility':compatibility(p,other)})
+                        if other['discoverable'] and eligible(p,other): matches.append({'id':row['id'],'name':other['first_name'],'bio':other['bio'],'overview':overview(other),'compatibility':compatibility(p,other)})
                     return self.reply(200,{'matches':sorted(matches,key=lambda m:m['compatibility']['score'],reverse=True)})
                 return self.reply(404,{'error':'Not found.'})
         files={'/':'index.html','/app.js':'app.js','/style.css':'style.css','/logo.png':'logo.png'}

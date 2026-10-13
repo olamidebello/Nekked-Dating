@@ -46,3 +46,11 @@ Copyright 2026 Olamide Olatayo Bello. All rights reserved. No open-source licens
 ## Branding
 
 The supplied gold-and-purple zodiac/dragon logo is included unchanged as `static/logo.png`. Slogan: “.. stripe down to your true self to find your true match”.
+
+## Compatible-profile registration
+
+After creating an account (with password confirmation), members complete six grouped sections: identity; private celestial birth details; gender, preferred genders, mutual age range, relationship goal, current city/region, optional interests and family/smoking preferences; optional private full birth name for numerology; relationship preferences; and private reflections. Discovery remains opt-in. The supplied dragon/heart/zodiac logo appears throughout onboarding.
+
+Mutual age and gender choices filter discovery. Relationship goals and disclosed family/smoking preferences contribute to the stated-preference component of the score. Interests and current location are saved privately for future matching support; they do not currently affect ranking. Full birth name is optional and overrides first/last name for Pythagorean numerology. Non-Latin-only names return an unavailable name number. Existing profiles remain compatible with the expanded schema.
+
+Symbolic calculations retain the approximation limits documented above. The Chinese dragon is branding; a member's birth-year animal is calculated from their own date rather than assigned Dragon to everyone. This update is source code only and does not deploy the service.
