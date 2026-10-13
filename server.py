@@ -55,10 +55,10 @@ class Handler(BaseHTTPRequestHandler):
                         if other['discoverable']: matches.append({'id':row['id'],'name':other['first_name'],'bio':other['bio'],'overview':overview(other),'compatibility':compatibility(p,other)})
                     return self.reply(200,{'matches':sorted(matches,key=lambda m:m['compatibility']['score'],reverse=True)})
                 return self.reply(404,{'error':'Not found.'})
-        files={'/':'index.html','/app.js':'app.js','/style.css':'style.css'}
+        files={'/':'index.html','/app.js':'app.js','/style.css':'style.css','/logo.png':'logo.png'}
         if self.path not in files: return self.reply(404,{'error':'Not found.'})
         path=Path(__file__).parent/'static'/files[self.path]; self.send_response(200)
-        self.send_header('Content-Type',{'html':'text/html; charset=utf-8','js':'text/javascript','css':'text/css'}[path.suffix[1:]])
+        self.send_header('Content-Type',{'html':'text/html; charset=utf-8','js':'text/javascript','css':'text/css','png':'image/png'}[path.suffix[1:]])
         self.send_header('Content-Security-Policy',"default-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'")
         self.send_header('X-Content-Type-Options','nosniff'); self.end_headers(); self.wfile.write(path.read_bytes())
     def do_POST(self):

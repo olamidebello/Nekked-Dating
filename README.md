@@ -42,3 +42,7 @@ Use a TLS reverse proxy and set `NEKKED_SECURE_COOKIE=1` and `NEKKED_ORIGIN=http
 ## Ownership
 
 Copyright 2026 Olamide Olatayo Bello. All rights reserved. No open-source license has been selected.
+
+## Branding
+
+The supplied gold-and-purple zodiac/dragon logo is included unchanged as `static/logo.png`. Slogan: “.. stripe down to your true self to find your true match”.
