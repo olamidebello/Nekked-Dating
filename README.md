@@ -54,3 +54,7 @@ After creating an account (with password confirmation), members complete six gro
 Mutual age and gender choices filter discovery. Relationship goals and disclosed family/smoking preferences contribute to the stated-preference component of the score. Interests and current location are saved privately for future matching support; they do not currently affect ranking. Full birth name is optional and overrides first/last name for Pythagorean numerology. Non-Latin-only names return an unavailable name number. Existing profiles remain compatible with the expanded schema.
 
 Symbolic calculations retain the approximation limits documented above. The Chinese dragon is branding; a member's birth-year animal is calculated from their own date rather than assigned Dragon to everyone. This update is source code only and does not deploy the service.
+
+## Celestial interface
+
+The interface uses a midnight-purple, rose and gold theme, the supplied dragon/heart logo, responsive orbital hero artwork and three concept cards. Public links navigate to the concept, matching journey and account form. Signed-in navigation opens My story, Discover, My symbols and Privacy with explicit active states. Account creation and sign-in have separate form modes. Saving a profile opens a four-card symbolic overview. Privacy links to the discovery control and account deletion. No sample members or unsupported messaging/payment buttons are shown.

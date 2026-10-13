@@ -1,1 +1,181 @@
-<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Nekked Dating · Be seen. Be yourself.</title><link rel="stylesheet" href="/style.css"></head><body><header><a href="/" class="brand" aria-label="Nekked Dating home"><img src="/logo.png" alt="Nekked Dating — gold and purple dragon, zodiac and heart emblem" width="1536" height="1280"></a><span>Dating beyond the surface</span></header><main><section class="hero"><small>LESS PRETENDING. MORE CONNECTING.</small><p class="slogan">.. stripe down to your true self to find your true match</p><h1>Be seen.<br>Be yourself.</h1><p>Explore your story, reflect on what matters, and meet people who want to know the real you.</p><div class="tags"><span>✦ Zodiac</span><span>◎ Numerology</span><span>♡ Personal reflection</span></div></section><p id="status" role="status" aria-live="polite"></p><section id="auth" class="panel"><h2>Your next chapter starts here</h2><form id="auth-form"><label>Email<input name="email" type="email" autocomplete="email" required></label><label>Password (12–128 characters)<input name="password" type="password" autocomplete="current-password" minlength="12" maxlength="128" required></label><label id="confirm-label">Confirm password (new accounts only)<input name="confirm_password" type="password" autocomplete="new-password" maxlength="128"></label><label class="check"><input name="adult" type="checkbox"> I am 18 or older (required to join)</label><div class="actions"><button name="action" value="register">Create account</button><button name="action" value="login" class="secondary">Sign in</button></div></form></section><section id="account" hidden><nav><button id="edit">My story</button><button id="discover">Discover matches</button><button id="logout" class="secondary">Sign out</button></nav><section id="profile" class="panel"><h2>Create your compatible profile</h2><p>Complete your private birth details and choose what matters in a relationship. You control when your profile becomes discoverable.</p><form id="profile-form"><fieldset><legend>1 · Your identity</legend><div class="grid"><label>First name<input name="first_name" required maxlength="80"></label><label>Last name (private)<input name="last_name" required maxlength="80"></label></div></fieldset><fieldset><legend>2 · ✦ Celestial details</legend><p>Birth date creates your approximate sun sign, birth-year Chinese zodiac and life-path number. Birth time and place are private; full natal charts are not yet available.</p><div class="grid"><label>Birth date (private)<input name="birth_date" type="date" required></label><label>Birth time (optional, private)<input name="birth_time" type="time"></label><label>Birth location (private)<input name="birth_location" required maxlength="200"></label></div></fieldset><fieldset><legend>3 · Who you are looking for</legend><div class="grid"><label>About you<textarea name="bio" required maxlength="1000"></textarea></label></div><div id="match-fields" class="grid"></div></fieldset><fieldset><legend>4 · ◎ Numerology</legend><label>Full birth name (optional, private)<input name="birth_name" maxlength="200" autocomplete="off"><small>Include middle names for name numerology. Leave blank to use your first and last name. This is never displayed to matches.</small></label><p>Uses the Pythagorean A–Z letter system; names without Latin letters do not receive a name number.</p></fieldset><h3>5 · What feels right for you?</h3><p>Choose your preference in each area. Shared answers contribute to your match score.</p><div id="preferences" class="grid"></div><h3>6 · Beyond the surface</h3><p>These answers stay private and do not affect your match score. Interpretations are conversation prompts, not psychological conclusions.</p><div id="questions"></div><label class="check"><input name="discoverable" type="checkbox"> Show my first name, bio, zodiac and numerology to signed-in members</label><button>Save my compatible profile</button></form><div id="overview"></div><button id="delete" class="danger">Delete account and answers</button></section><section id="matches" class="panel" hidden><h2>Connections worth exploring</h2><div id="results"></div></section></section><footer><p>Astrology and numerology are for entertainment and reflection. Scores do not predict relationship success. Birth time and location are saved for future chart support; this version calculates an approximate sun sign only.</p><details><summary>Privacy & community</summary><p>Your email, surname, birth details and reflections are private. Discovery is opt-in. Delete your account to remove stored account data. Data is stored on this server; the operator must provide a privacy contact before public launch. This early version has no messaging, photo uploads, reporting or blocking. Respect boundaries and never share sensitive details in your public bio.</p></details></footer></main><script src="/app.js"></script></body></html>
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Nekked Dating · Be seen. Be yourself.</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<header>
+<a href="/" class="brand" aria-label="Nekked Dating home">
+<img src="/logo.png" alt="Nekked Dating — gold and purple dragon, zodiac and heart emblem" width="1536" height="1280">
+</a>
+<nav class="public-nav" aria-label="Explore Nekked Dating">
+<a href="#concept">Our universe</a>
+<a href="#journey">How it works</a>
+<a href="#auth">Join / Sign in</a>
+</nav>
+</header>
+<main>
+<section class="hero" id="concept">
+<div class="hero-copy">
+<small>LESS PRETENDING. MORE CONNECTING.</small>
+<p class="slogan">.. stripe down to your true self to find your true match</p>
+<h1>Be seen.<br>Be yourself.</h1>
+<p>Explore your story, reflect on what matters, and meet people who want to know the real you.</p>
+<div class="tags">
+<span>✦ Zodiac</span>
+<span>◎ Numerology</span>
+<span>♡ Personal reflection</span>
+</div>
+<a class="cta" href="#auth">Begin your journey <span aria-hidden="true">↗</span>
+</a>
+</div>
+<div class="cosmic-emblem">
+<div class="orbit" aria-hidden="true">
+<span>✦</span>
+</div>
+<img src="/logo.png" alt="Nekked Dating celestial heart and Chinese dragon">
+<p>YOUR STORY. YOUR STARS. YOUR CONNECTION.</p>
+</div>
+</section>
+<section id="journey" class="concept-grid" aria-label="Our matching concept">
+<article>
+<span class="concept-icon" aria-hidden="true">✦</span>
+<small>01 / CELESTIAL</small>
+<h2>Written in the stars</h2>
+<p>Explore sun-sign elements and your birth-year Chinese zodiac.</p>
+</article>
+<article>
+<span class="concept-icon" aria-hidden="true">◎</span>
+<small>02 / NUMEROLOGY</small>
+<h2>The numbers of you</h2>
+<p>Discover your life-path and name numbers from your personal story.</p>
+</article>
+<article>
+<span class="concept-icon" aria-hidden="true">♡</span>
+<small>03 / CONNECTION</small>
+<h2>Beyond the surface</h2>
+<p>Find shared relationship intentions, values and communication preferences.</p>
+</article>
+</section>
+<p id="status" role="status" aria-live="polite">
+</p>
+<section id="auth" class="panel">
+<h2>Your next chapter starts here</h2>
+<div class="auth-tabs">
+<button id="join-mode" type="button" aria-pressed="true">Create account</button>
+<button id="login-mode" type="button" class="secondary" aria-pressed="false">Sign in</button>
+</div>
+<form id="auth-form">
+<label>Email<input name="email" type="email" autocomplete="email" required>
+</label>
+<label>Password (12–128 characters)<input name="password" type="password" autocomplete="current-password" minlength="12" maxlength="128" required>
+</label>
+<label id="confirm-label">Confirm password (new accounts only)<input name="confirm_password" type="password" autocomplete="new-password" maxlength="128">
+</label>
+<label id="adult-label" class="check">
+<input name="adult" type="checkbox"> I am 18 or older (required to join)</label>
+<div class="actions">
+<button id="auth-submit" name="action" value="register">Create account →</button>
+</div>
+</form>
+</section>
+<section id="account" hidden>
+<nav class="member-nav" aria-label="Your dating universe">
+<button id="edit" aria-pressed="true">♡ My story</button>
+<button id="discover" aria-pressed="false">✧ Discover</button>
+<button id="symbols" aria-pressed="false">◎ My symbols</button>
+<button id="privacy" aria-pressed="false">♧ Privacy</button>
+<button id="logout" class="secondary">Sign out</button>
+</nav>
+<section id="profile" class="panel">
+<h2>Create your compatible profile</h2>
+<p>Complete your private birth details and choose what matters in a relationship. You control when your profile becomes discoverable.</p>
+<form id="profile-form">
+<fieldset>
+<legend>1 · Your identity</legend>
+<div class="grid">
+<label>First name<input name="first_name" required maxlength="80">
+</label>
+<label>Last name (private)<input name="last_name" required maxlength="80">
+</label>
+</div>
+</fieldset>
+<fieldset>
+<legend>2 · ✦ Celestial details</legend>
+<p>Birth date creates your approximate sun sign, birth-year Chinese zodiac and life-path number. Birth time and place are private; full natal charts are not yet available.</p>
+<div class="grid">
+<label>Birth date (private)<input name="birth_date" type="date" required>
+</label>
+<label>Birth time (optional, private)<input name="birth_time" type="time">
+</label>
+<label>Birth location (private)<input name="birth_location" required maxlength="200">
+</label>
+</div>
+</fieldset>
+<fieldset>
+<legend>3 · Who you are looking for</legend>
+<div class="grid">
+<label>About you<textarea name="bio" required maxlength="1000">
+</textarea>
+</label>
+</div>
+<div id="match-fields" class="grid">
+</div>
+</fieldset>
+<fieldset>
+<legend>4 · ◎ Numerology</legend>
+<label>Full birth name (optional, private)<input name="birth_name" maxlength="200" autocomplete="off">
+<small>Include middle names for name numerology. Leave blank to use your first and last name. This is never displayed to matches.</small>
+</label>
+<p>Uses the Pythagorean A–Z letter system; names without Latin letters do not receive a name number.</p>
+</fieldset>
+<h3>5 · What feels right for you?</h3>
+<p>Choose your preference in each area. Shared answers contribute to your match score.</p>
+<div id="preferences" class="grid">
+</div>
+<h3>6 · Beyond the surface</h3>
+<p>These answers stay private and do not affect your match score. Interpretations are conversation prompts, not psychological conclusions.</p>
+<div id="questions">
+</div>
+<label class="check">
+<input name="discoverable" type="checkbox"> Show my first name, bio, zodiac and numerology to signed-in members</label>
+<button>Save my compatible profile</button>
+</form>
+</section>
+<section id="matches" class="panel" hidden>
+<h2>Connections worth exploring</h2>
+<div id="results">
+</div>
+</section>
+<section id="symbol-panel" class="panel" hidden>
+<small>YOUR CELESTIAL SIGNATURE</small>
+<h2>Your symbolic universe</h2>
+<div id="overview">
+<p>Save your profile to reveal your personal symbols.</p>
+</div>
+<p>Symbols support reflection. Your choices and boundaries guide real relationships.</p>
+</section>
+<section id="privacy-panel" class="panel" hidden>
+<small>YOUR STORY BELONGS TO YOU</small>
+<h2>Privacy & visibility</h2>
+<p>Discovery is off until you choose to enable it in My story. Your email, surname, birth details, full birth name, location and reflection answers remain private.</p>
+<button id="visibility-edit">Manage visibility in My story</button>
+<p>Deleting your account removes your profile and sessions from the live database. Backup retention is managed separately by the operator.</p>
+<button id="delete" class="danger">Delete account and answers</button>
+</section>
+</section>
+<footer>
+<p>Astrology and numerology are for entertainment and reflection. Scores do not predict relationship success. Birth time and location are saved for future chart support; this version calculates an approximate sun sign only.</p>
+<details>
+<summary>Privacy & community</summary>
+<p>Your email, surname, birth details and reflections are private. Discovery is opt-in. Delete your account to remove stored account data. Data is stored on this server; the operator must provide a privacy contact before public launch. This early version has no messaging, photo uploads, reporting or blocking. Respect boundaries and never share sensitive details in your public bio.</p>
+</details>
+</footer>
+</main>
+<script src="/app.js">
+</script>
+</body>
+</html>
