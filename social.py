@@ -3,6 +3,7 @@ import json, os, time
 from datetime import datetime, timezone
 from matching import eligible, compatibility, age
 import media_store
+import commerce
 
 SCHEMA='''
 CREATE TABLE IF NOT EXISTS account_roles(user_id INTEGER PRIMARY KEY,role TEXT);
@@ -40,14 +41,14 @@ def connection(c,a,b,active=True):
     low,high=sorted([a,b]); row=c.execute('SELECT * FROM connections WHERE low_id=? AND high_id=?',(low,high)).fetchone()
     return row if row and (not active or row['active']) and not blocked(c,a,b) else None
 
-def match_allowed(c,a,b): return a!=b and bool(connection(c,a,b))
+def match_allowed(c,a,b): return a!=b and bool(connection(c,a,b)) and not c.execute('SELECT 1 FROM account_controls WHERE user_id IN (?,?) AND suspended=1',(a,b)).fetchone()
 
 def person(c,uid):
     row=c.execute('SELECT id,profile FROM users WHERE id=?',(uid,)).fetchone()
     return row, json.loads(row['profile']) if row and row['profile'] else None
 
 def candidate(c,a,p,b,q):
-    return bool(a!=b and p and q and p.get('discoverable') and q.get('discoverable') and eligible(p,q) and not settings(c,a)['paused'] and not settings(c,b)['paused'] and not blocked(c,a,b) and not connection(c,a,b))
+    return bool(not c.execute('SELECT 1 FROM account_controls WHERE user_id IN (?,?) AND suspended=1',(a,b)).fetchone() and a!=b and p and q and p.get('discoverable') and q.get('discoverable') and eligible(p,q) and not settings(c,a)['paused'] and not settings(c,b)['paused'] and not blocked(c,a,b) and not connection(c,a,b))
 
 def teaser(c,row,p):
     visible=set(p.get('visible_details',VISIBLE))
@@ -68,6 +69,7 @@ def notify(c,uid,text):
 def connection_row(c,uid,cid):
     row=c.execute('SELECT * FROM connections WHERE id=? AND active=1 AND (low_id=? OR high_id=?)',(cid,uid,uid)).fetchone()
     if not row: return None
+    if c.execute('SELECT 1 FROM account_controls WHERE user_id IN (?,?) AND suspended=1',(row['low_id'],row['high_id'])).fetchone():return None
     other=row['high_id'] if row['low_id']==uid else row['low_id']
     return (row,other) if not blocked(c,uid,other) else None
 
@@ -82,11 +84,18 @@ def ident(data,key):
     return value
 
 def allowance(c,uid,action,limit,seconds):
+    membership=commerce.entitlements(c,uid)
+    if action in ('like','undo') and membership['tier'] in ('plus','premium'):return True
     count=c.execute('SELECT COUNT(*) FROM action_log WHERE user_id=? AND action=? AND created>?',(uid,action,time.time()-seconds)).fetchone()[0]
-    if count>=limit: return False
+    if count>=limit:
+        if action=='rose':
+            credit=c.execute('SELECT order_id FROM entitlements WHERE user_id=? AND revoked=0 AND expires>? AND roses>0 ORDER BY expires LIMIT 1',(uid,time.time())).fetchone()
+            if credit:
+                c.execute('UPDATE entitlements SET roses=roses-1 WHERE order_id=? AND roses>0',(credit[0],));return True
+        return False
     c.execute('INSERT INTO action_log VALUES(?,?,?)',(uid,action,time.time())); return True
 
-def is_admin(c,u): return bool(c.execute("SELECT 1 FROM account_roles WHERE user_id=? AND role='admin'",(u['id'],)).fetchone())
+def is_admin(c,u): return bool(c.execute("SELECT 1 FROM account_roles WHERE user_id=? AND role IN ('admin','super_admin')",(u['id'],)).fetchone())
 
 def dispatch(method,path,data,c,u,p):
     uid=u['id']; parts=path.strip('/').split('/')[1:]
@@ -94,7 +103,7 @@ def dispatch(method,path,data,c,u,p):
         if path=='/api/preview':
             if not p: return 400,{'error':'Save your profile first.'}
             return 200,{'profile':teaser(c,{'id':uid},p)}
-        if path=='/api/capabilities': return 200,{'messaging':True,'likes':True,'translation':'local','payments':False,'sms_verification':False,'social_login':False,'selfie_verification':False,'voice_video':True}
+        if path=='/api/capabilities': return 200,{'messaging':True,'likes':True,'translation':'local','payments':any(x['enabled'] and x['ready'] for x in commerce.gateway_list(c)),'sms_verification':False,'social_login':False,'selfie_verification':False,'voice_video':True}
         if path=='/api/settings': return 200,{'settings':settings(c,uid),'admin':is_admin(c,u)}
         if path in ('/api/discover','/api/standouts'):
             if not p: return 400,{'error':'Save your profile first.'}
@@ -114,7 +123,7 @@ def dispatch(method,path,data,c,u,p):
             for row in c.execute("SELECT * FROM interests WHERE recipient=? AND status='pending' ORDER BY CASE strength WHEN 'rose' THEN 0 ELSE 1 END,created DESC",(uid,)):
                 other,q=person(c,row['sender'])
                 if other and candidate(c,uid,p,other['id'],q): out.append({'id':row['id'],'profile':teaser(c,other,q),'comment':row['comment'],'strength':row['strength'],'kind':row['kind'],'target':row['target'],'created':row['created']})
-            return 200,{'likes':out}
+            return 200,{'likes':out if commerce.entitlements(c,uid)['tier']!='free' else out[:1],'total':len(out)}
         if path=='/api/conversations':
             out=[]
             for row in c.execute('SELECT * FROM connections WHERE active=1 AND (low_id=? OR high_id=?)',(uid,uid)):
@@ -272,6 +281,13 @@ def accept(c,a,b,p,q,opening=''):
     return 200,{'ok':True,'matched':True,'connection_id':row['id']}
 
 def delete_user(c,uid):
+    c.execute('DELETE FROM entitlements WHERE user_id=?',(uid,))
+    c.execute('DELETE FROM account_controls WHERE user_id=?',(uid,))
+    c.execute('UPDATE orders SET user_id=NULL WHERE user_id=?',(uid,))
+    c.execute('UPDATE refund_requests SET user_id=NULL WHERE user_id=?',(uid,))
+    c.execute('UPDATE audit_events SET actor=NULL WHERE actor=?',(uid,))
+    row=c.execute('SELECT email FROM users WHERE id=?',(uid,)).fetchone()
+    if row:c.execute('DELETE FROM access_intents WHERE email=?',(row[0],))
     for table,key in [('account_roles','user_id'),('account_settings','user_id'),('connection_settings','user_id'),('action_log','user_id'),('notices','user_id'),('support_requests','user_id'),('success_stories','user_id'),('activity','user_id'),('messages','sender'),('media','user_id'),('thoughts','user_id'),('take_invites','user_id'),('friend_takes','user_id')]: c.execute('DELETE FROM '+table+' WHERE '+key+'=?',(uid,))
     for table,a,b in [('interests','sender','recipient'),('blocks','actor','target'),('passes','actor','target')]: c.execute('DELETE FROM '+table+' WHERE '+a+'=? OR '+b+'=?',(uid,uid))
     c.execute('DELETE FROM poll_votes WHERE actor=? OR owner=?',(uid,uid))

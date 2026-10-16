@@ -1,6 +1,6 @@
 # Nekked Dating
 
-A self-hosted adult dating application with private personal symbols and explicit mutual matching. Uses Python 3.10+ and SQLite for the application; optional private translation runs separately on the same host.
+A self-hosted adult dating application with private personal symbols and explicit mutual matching. Uses Python 3.10+, the cryptography package and SQLite for the application; optional private translation runs separately on the same host.
 
 ## Run and test
 
@@ -83,7 +83,7 @@ The supplied feature list is broader than this implementation. The app does not 
 
 - SMS/email code verification, Google/Apple login and connected-account management.
 - Selfie/face matching, verified identity/age documents and verification badges.
-- Paid subscriptions, purchases, card billing, billing-portal cancellation, paid boosts, priority paid Likes and purchased credit balances.
+- Automatic recurring billing, billing-portal cancellation, paid boosts and paid priority Likes. The marketplace below implements prepaid memberships and purchased Rose packs.
 - Native mobile apps, push/SMS/email notifications, live calling and native store purchases.
 - Map search/geocoding, distance calculations and subscription-specific demographic filters.
 - Automated prompt feedback, personalized generated openers, Signals badges, contact-list blocking and advanced abuse detection.
@@ -93,3 +93,25 @@ The supplied feature list is broader than this implementation. The app does not 
 The GUI states when provider-dependent features are not configured. It does not show fake purchases, verified badges, phone checks or connected accounts. Authentication currently means email/password only; email ownership is not verified. Operator privacy/support details, rate limits on authentication, account recovery, robust media processing, and operational monitoring must be completed before unrestricted public launch.
 
 Copyright 2026 Olamide Olatayo Bello. All rights reserved.
+
+## Super-admin console, marketplace and mobile download hub
+
+Install from an updated checkout:
+
+```sh
+sudo ansible-playbook -i localhost, -c local ansible/install-super-admin-marketplace.yml
+```
+
+The installer installs encryption support, deploys and tests the app, verifies protected endpoints, and attempts to elevate `kendollreign@gmail.com` to the distinct `super_admin` role. It only elevates an existing account. If missing, it records a pending operator action and reports PENDING, without creating an account/password or automatically promoting a later unverified signup. Create and sign in to the intended account, then rerun the installer. Existing passwords are preserved. The last super admin cannot be demoted, suspended or deleted until another is granted. This repository change alone does not modify a remote production database.
+
+The console at `/admin` has an operational dashboard, user search, role management, account suspension, session revocation, plan/product editing, publication controls, gateway configuration, order verification, refund-request review, maintenance/registration switches, contact/copyright settings, mobile release links and an audit log. Existing moderation remains available to admins and super admins. Sensitive role/gateway/account-state changes require the acting operator's current password. Ordinary members and moderators cannot access super-admin APIs.
+
+Suggested membership drafts: Plus USD 9.99/30 days or USD 99.99/365 days; Premium USD 19.99/30 days or USD 199.99/365 days. Plus grants unlimited Likes/Undo and all incoming Likes; Premium adds five additional Roses per term. A five-Rose pack is drafted at USD 4.99. All prices, currencies, terms and publication states can be edited. These are **prepaid fixed-term memberships, not automatically renewing subscriptions**. No future recurring charges or cancellation of provider recurring plans are implemented. Plans/products start unpublished and marketplace checkout starts closed. Free users retain existing rolling allowances and see one incoming Like at a time. Paid benefits never alter symbolic compatibility scores.
+
+Hosted checkout adapters are implemented for Stripe, PayPal, Paystack and Flutterwave. Availability of cards, local bank methods, wallets or buy-now-pay-later depends on each merchant's provider account, currency and region. Apple Pay/Google Pay/Klarna may be exposed by an eligible hosted checkout; they are not independent gateway adapters here. Square, Adyen, Razorpay, Mollie, Authorize.Net, Braintree, Checkout.com, Payoneer, Worldpay, Amazon Pay, bank transfer and crypto are listed as unavailable planning entries and cannot be enabled as working checkout adapters. This is not every payment gateway in existence.
+
+Gateway credentials are write-only in the GUI and encrypted at rest with Fernet. The master key is `/var/lib/nekkeddating/.nekked-commerce.key` (0600); retain it with the database backup. The installer backs up that key when present. Never commit keys or merchant credentials. Required credentials differ by provider; optional webhook secrets/IDs are required to use authenticated asynchronous notifications. Webhook endpoints are `/api/webhooks/{gateway}`. Stripe uses timestamped HMAC-SHA256 signatures, Paystack HMAC-SHA512, Flutterwave HMAC-SHA256 or the documented legacy v3 secret hash, and PayPal provider-side signature verification. Every matched signed webhook is followed by server-side transaction verification.
+
+Prices, currencies, terms and beneficiary identity are selected server-side. Browser prices and return URLs are never accepted as proof of payment. Verification checks provider test/live mode, successful status, amount, currency and order reference. Duplicate confirmations do not extend access twice. Test orders are marked test_paid and never grant production benefits. Members can recheck pending orders or request refunds. Refunds must actually be completed in the provider's dashboard; recording an externally completed refund requires an operator password and provider reference and revokes the corresponding benefits. There is no automated refund API in this release. Merchant secrets, live charges and settlement have not been tested against real production accounts.
+
+`/download` is a real mobile-install hub with browser/PWA installation. Android and iOS download links appear only when the super admin supplies HTTPS URLs to actual published native releases/store pages. No native APK/iOS package is built or fabricated by this installer.

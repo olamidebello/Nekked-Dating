@@ -9,13 +9,16 @@ from symbol_details import symbol_detail
 from astrology_tools import match_report
 import translation
 import social
+import commerce
+import gateways
 DB = os.environ.get('NEKKED_DB','nekked.sqlite3')
 CATEGORIES = ['emotional','intimacy','financial','living','moods']
 def connect():
-    c=sqlite3.connect(DB); c.row_factory=sqlite3.Row
+    c=sqlite3.connect(DB,timeout=30); c.row_factory=sqlite3.Row
     c.executescript('CREATE TABLE IF NOT EXISTS users(id INTEGER PRIMARY KEY,email TEXT UNIQUE,password TEXT,profile TEXT); CREATE TABLE IF NOT EXISTS sessions(token TEXT PRIMARY KEY,user_id INTEGER,expires REAL); CREATE TABLE IF NOT EXISTS photos(id TEXT PRIMARY KEY,user_id INTEGER,data BLOB); CREATE TABLE IF NOT EXISTS onboarding(user_id INTEGER PRIMARY KEY,data TEXT);')
     c.executescript(social.SCHEMA)
     if 'media_id' not in {r[1] for r in c.execute('PRAGMA table_info(messages)')}: c.execute("ALTER TABLE messages ADD COLUMN media_id TEXT DEFAULT ''")
+    commerce.initialize(c,str(Path(DB).parent/'.nekked-commerce.key'))
     return c
 
 def password_hash(password,salt=None):
@@ -120,8 +123,13 @@ class Handler(BaseHTTPRequestHandler):
     def user(self,c):
         cookies=SimpleCookie(); cookies.load(self.headers.get('Cookie',''))
         token=cookies.get('session'); token=token.value if token else ''
-        return c.execute('SELECT users.* FROM users JOIN sessions ON user_id=users.id WHERE token=? AND expires>?',(hashlib.sha256(token.encode()).hexdigest(),time.time())).fetchone()
+        user=c.execute('SELECT users.* FROM users JOIN sessions ON user_id=users.id WHERE token=? AND expires>?',(hashlib.sha256(token.encode()).hexdigest(),time.time())).fetchone()
+        if user and c.execute('SELECT 1 FROM account_controls WHERE user_id=? AND suspended=1',(user['id'],)).fetchone():return None
+        return user
     def do_GET(self):
+        self.path=self.path.split('?',1)[0]
+        if self.path=='/api/public/platform':
+            with connect() as c:return self.reply(200,commerce.config(c))
         if self.path=='/api/public/stories':
             with connect() as c: return self.reply(200,{'stories':[dict(r) for r in c.execute("SELECT story FROM success_stories WHERE status='approved' ORDER BY id DESC LIMIT 30")]})
         if self.path.startswith('/api/'):
@@ -129,6 +137,9 @@ class Handler(BaseHTTPRequestHandler):
                 u=self.user(c)
                 if not u: return self.reply(401,{'error':'Please sign in.'})
                 p=json.loads(u['profile']) if u['profile'] else None
+                if commerce.config(c)['maintenance'] and not commerce.superuser(c,u['id']) and self.path in ('/api/discover','/api/standouts','/api/likes','/api/matches'):return self.reply(503,{'error':'The platform is temporarily in maintenance mode.'})
+                handled=commerce.dispatch('GET',self.path,{},c,u,lambda _:False)
+                if handled is not None:return self.reply(*handled)
                 handled=social.dispatch('GET',self.path,{},c,u,p)
                 if handled is not None: return self.reply(*handled)
                 if self.path.startswith('/api/media/'):
@@ -162,7 +173,7 @@ class Handler(BaseHTTPRequestHandler):
                     if not social.match_allowed(c,u['id'],int(comparison[1])): return self.reply(404,{'error':'This match is no longer available.'})
                     return self.reply(200,{'name':other['first_name'],'report':match_report(p,other)})
                 if self.path=='/api/translation/languages': return self.reply(200,translation.languages())
-                if self.path=='/api/me': return self.reply(200,{'id':u['id'],'email':u['email'],'profile':p,'onboarding':json.loads(c.execute('SELECT data FROM onboarding WHERE user_id=?',(u['id'],)).fetchone()[0]) if c.execute('SELECT 1 FROM onboarding WHERE user_id=?',(u['id'],)).fetchone() else {},'uploaded_photos':[r[0] for r in c.execute('SELECT id FROM photos WHERE user_id=?',(u['id'],))],'overview':overview(p, private=True) if p else None})
+                if self.path=='/api/me': return self.reply(200,{'id':u['id'],'role':commerce.role(c,u['id']),'email':u['email'],'profile':p,'onboarding':json.loads(c.execute('SELECT data FROM onboarding WHERE user_id=?',(u['id'],)).fetchone()[0]) if c.execute('SELECT 1 FROM onboarding WHERE user_id=?',(u['id'],)).fetchone() else {},'uploaded_photos':[r[0] for r in c.execute('SELECT id FROM photos WHERE user_id=?',(u['id'],))],'overview':overview(p, private=True) if p else None})
                 if self.path.startswith('/api/photos/'):
                     photo=c.execute('SELECT * FROM photos WHERE id=?',(self.path.rsplit('/',1)[-1],)).fetchone()
                     if not photo: return self.reply(404,{'error':'Not found.'})
@@ -183,7 +194,7 @@ class Handler(BaseHTTPRequestHandler):
         files={'/take.js':'take.js','/':'index.html','/app.js':'app.js','/style.css':'style.css','/logo.png':'logo.png'}
         if re.fullmatch(r'/take/[A-Za-z0-9_-]{40,60}',self.path): files[self.path]='take.html'
         if re.fullmatch(r'/symbols/(me|[1-9][0-9]*)/(sun_sign|chinese_zodiac|life_path|name_number)',self.path): files[self.path]='symbol.html'
-        files.update({'/icon-192.png':'icon-192.png','/icon-512.png':'icon-512.png','/manifest.webmanifest':'manifest.webmanifest','/sw.js':'sw.js','/community':'community.html','/community.js':'community.js','/social.js':'social.js','/symbol.js':'symbol.js','/tools':'tools.html','/tools.js':'tools.js'})
+        files.update({'/platform.js':'platform.js','/admin':'admin.html','/admin.js':'admin.js','/marketplace':'marketplace.html','/marketplace.js':'marketplace.js','/download':'download.html','/download.js':'download.js','/icon-192.png':'icon-192.png','/icon-512.png':'icon-512.png','/manifest.webmanifest':'manifest.webmanifest','/sw.js':'sw.js','/community':'community.html','/community.js':'community.js','/social.js':'social.js','/symbol.js':'symbol.js','/tools':'tools.html','/tools.js':'tools.js'})
         if self.path not in files: return self.reply(404,{'error':'Not found.'})
         path=Path(__file__).parent/'static'/files[self.path]; self.send_response(200)
         self.send_header('Content-Type',{'html':'text/html; charset=utf-8','js':'text/javascript','css':'text/css','png':'image/png','webmanifest':'application/manifest+json'}[path.suffix[1:]])
@@ -195,9 +206,11 @@ class Handler(BaseHTTPRequestHandler):
         try:
             size=int(self.headers.get('Content-Length',0))
             if not 0<size<=(6000000 if self.path=='/api/media' else 700000 if self.path=='/api/photos' else 60000): raise ValueError('Invalid request size.')
-            data=json.loads(self.rfile.read(size)); self.cookies=[]
+            raw=self.rfile.read(size);data=json.loads(raw); self.cookies=[]
             if not isinstance(data,dict): raise ValueError('Expected an object.')
             with connect() as c:
+                webhook=re.fullmatch(r'/api/webhooks/(stripe|paypal|paystack|flutterwave)',self.path)
+                if webhook:return self.reply(*commerce.webhook(webhook[1],raw,data,self.headers,c))
                 take=re.fullmatch(r'/api/public/take/([A-Za-z0-9_-]{40,60})',self.path)
                 if take:
                     invite=c.execute('SELECT * FROM take_invites WHERE token=? AND expires>?',(take[1],time.time())).fetchone()
@@ -210,14 +223,19 @@ class Handler(BaseHTTPRequestHandler):
                     email=data.get('email','').strip().lower(); password=data.get('password','')
                     if '@' not in email or len(email)>254 or not 12<=len(password)<=128: raise ValueError('Use an email and a password of 12–128 characters.')
                     if self.path=='/api/register':
+                        if not commerce.config(c)['registration_open']:return self.reply(403,{'error':'Registration is currently closed.'})
                         if data.get('adult') is not True: raise ValueError('Confirm you are 18 or older.')
                         initial=onboarding_data(data)
                         try:
-                            created=c.execute('INSERT INTO users(email,password) VALUES(?,?)',(email,password_hash(password)))
+                            c.execute('BEGIN IMMEDIATE')
+                            next_id=c.execute('SELECT value+1 FROM app_identity WHERE id=1').fetchone()[0]
+                            c.execute('UPDATE app_identity SET value=? WHERE id=1',(next_id,))
+                            created=c.execute('INSERT INTO users(id,email,password) VALUES(?,?,?)',(next_id,email,password_hash(password)))
                             c.execute('INSERT INTO onboarding VALUES(?,?)',(created.lastrowid,json.dumps(initial)))
                         except sqlite3.IntegrityError: raise ValueError('Account cannot be created with that email.')
                     u=c.execute('SELECT * FROM users WHERE email=?',(email,)).fetchone()
                     if not u or not hmac.compare_digest(password_hash(password,u['password'].split(':')[0]),u['password']): return self.reply(401,{'error':'Invalid email or password.'})
+                    if c.execute('SELECT 1 FROM account_controls WHERE user_id=? AND suspended=1',(u['id'],)).fetchone():return self.reply(403,{'error':'This account is suspended. Contact support.'})
                     token=secrets.token_urlsafe(32); c.execute('INSERT INTO sessions VALUES(?,?,?)',(hashlib.sha256(token.encode()).hexdigest(),u['id'],time.time()+86400))
                     secure='; Secure' if os.environ.get('NEKKED_SECURE_COOKIE')=='1' else ''
                     self.cookies=['session='+token+'; HttpOnly; SameSite=Strict; Path=/; Max-Age=86400'+secure]
@@ -225,6 +243,9 @@ class Handler(BaseHTTPRequestHandler):
                 u=self.user(c)
                 if not u: return self.reply(401,{'error':'Please sign in.'})
                 p=json.loads(u['profile']) if u['profile'] else None
+                if commerce.config(c)['maintenance'] and not commerce.superuser(c,u['id']) and (self.path=='/api/likes' or self.path.startswith('/api/conversations/')):return self.reply(503,{'error':'The platform is temporarily in maintenance mode.'})
+                handled=commerce.dispatch('POST',self.path,data,c,u,lambda password:hmac.compare_digest(password_hash(password,u['password'].split(':')[0]),u['password']))
+                if handled is not None:return self.reply(*handled)
                 c.execute('BEGIN IMMEDIATE')
                 handled=social.dispatch('POST',self.path,data,c,u,p)
                 if handled is not None: return self.reply(*handled)
@@ -280,10 +301,12 @@ class Handler(BaseHTTPRequestHandler):
                 if self.path in ('/api/logout','/api/delete'):
                     c.execute('DELETE FROM sessions WHERE user_id=?',(u['id'],))
                     if self.path=='/api/delete':
+                        if commerce.superuser(c,u['id']) and c.execute("SELECT COUNT(*) FROM account_roles WHERE role='super_admin'").fetchone()[0]<=1:return self.reply(400,{'error':'Promote another super admin before deleting this operator account.'})
                         social.delete_user(c,u['id'])
                         c.execute('DELETE FROM onboarding WHERE user_id=?',(u['id'],)); c.execute('DELETE FROM photos WHERE user_id=?',(u['id'],)); c.execute('DELETE FROM users WHERE id=?',(u['id'],))
                     self.cookies=['session=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0']; return self.reply(200,{'ok':True})
                 return self.reply(404,{'error':'Not found.'})
+        except gateways.GatewayError as error:self.reply(502,{'error':str(error)})
         except (ValueError,TypeError,KeyError): self.reply(400,{'error':'Invalid input. Check dates and complete required fields.'})
     def log_message(self,*args): pass
 if __name__=='__main__':

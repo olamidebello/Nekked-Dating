@@ -1,0 +1,58 @@
+---
+# Install this from an updated checkout. Credentials are entered later through the authenticated super-admin console.
+- name: Install super-admin prerequisites before application validation
+  hosts: all
+  become: true
+  gather_facts: false
+  tasks:
+    - name: Install encryption support and automation prerequisites
+      ansible.builtin.apt:
+        name: [python3-cryptography, git, nginx, ca-certificates]
+        state: present
+        update_cache: true
+        cache_valid_time: 3600
+
+- name: Deploy tested social platform and optional private translation
+  ansible.builtin.import_playbook: install-social-platform.yml
+
+- name: Configure super admin and marketplace operations
+  hosts: all
+  become: true
+  gather_facts: false
+  vars:
+    nekked_super_admin_email: kendollreign@gmail.com
+  tasks:
+    - name: Elevate the requested existing account or record a pending operator action
+      ansible.builtin.command:
+        argv:
+          - python3
+          - /opt/nekkeddating-github-current/scripts/grant-admin.py
+          - --db
+          - /var/lib/nekkeddating/nekked.sqlite3
+          - --email
+          - '{{ nekked_super_admin_email }}'
+          - --role
+          - super_admin
+          - --defer
+      register: elevation
+      changed_when: "'APPLIED:' in elevation.stdout"
+    - name: Verify super-admin interface
+      ansible.builtin.uri:
+        url: http://127.0.0.1:18083/admin
+        status_code: 200
+    - name: Verify private super-admin endpoint rejects unsigned users
+      ansible.builtin.uri:
+        url: http://127.0.0.1:18083/api/super/overview
+        status_code: 401
+    - name: Verify marketplace and mobile app hub
+      ansible.builtin.uri:
+        url: 'http://127.0.0.1:18083/{{ item }}'
+        status_code: 200
+      loop: [marketplace, download]
+    - name: Show real promotion outcome
+      ansible.builtin.debug:
+        msg:
+          - '{{ elevation.stdout }}'
+          - 'Super-admin console: /admin. Marketplace: /marketplace. Mobile installation: /download.'
+          - 'Plans start as drafts and checkout starts disabled. Configure merchant credentials and publish plans before opening sales.'
+          - 'Keep /var/lib/nekkeddating/.nekked-commerce.key with encrypted database backups.'
