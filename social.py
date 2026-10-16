@@ -285,7 +285,14 @@ def dispatch(method,path,data,c,u,p):
 
 def accept(c,a,b,p,q,opening=''):
     # Both an accepted incoming Like and reciprocal Likes are explicit mutual consent.
+    existing=connection(c,a,b)
+    if existing:return 200,{'ok':True,'matched':True,'connection_id':existing['id']}
+    for uid in (a,b):
+        quota=commerce.match_quota(c,uid)
+        if quota['remaining']==0:
+            return 409,{'error':'Your free plan has reached 10 new matches this month. Visit Marketplace to upgrade or wait until next month.' if uid==a else 'This member has reached their monthly match limit. This interest can be accepted after their limit resets or they upgrade.','code':'monthly_match_limit','upgrade_url':'/marketplace','resets_at':quota['resets_at']}
     low,high=sorted([a,b]); now=time.time()
+    c.executemany('INSERT INTO monthly_match_events VALUES(?,?,?)',[(a,b,now),(b,a,now)])
     c.execute('INSERT INTO connections(low_id,high_id,created) VALUES(?,?,?) ON CONFLICT(low_id,high_id) DO UPDATE SET active=1,created=excluded.created',(low,high,now))
     c.execute("UPDATE interests SET status='accepted' WHERE (sender=? AND recipient=?) OR (sender=? AND recipient=?)",(a,b,b,a))
     row=connection(c,a,b)
@@ -294,6 +301,7 @@ def accept(c,a,b,p,q,opening=''):
     return 200,{'ok':True,'matched':True,'connection_id':row['id']}
 
 def delete_user(c,uid):
+    c.execute('DELETE FROM monthly_match_events WHERE user_id=?',(uid,))
     c.execute('DELETE FROM entitlements WHERE user_id=?',(uid,))
     c.execute('DELETE FROM account_controls WHERE user_id=?',(uid,))
     c.execute('UPDATE orders SET user_id=NULL WHERE user_id=?',(uid,))

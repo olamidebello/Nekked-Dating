@@ -4,8 +4,11 @@ from pathlib import Path
 from urllib.parse import urlsplit
 from cryptography.fernet import Fernet,InvalidToken
 import gateways
+from datetime import datetime,timezone
 KEY_PATH=None
 SCHEMA='''
+CREATE TABLE IF NOT EXISTS monthly_match_events(user_id INTEGER,other_id INTEGER,created REAL,UNIQUE(user_id,other_id,created));
+CREATE INDEX IF NOT EXISTS monthly_match_user_time ON monthly_match_events(user_id,created);
 CREATE TABLE IF NOT EXISTS app_identity(id INTEGER PRIMARY KEY,value INTEGER);
 CREATE TABLE IF NOT EXISTS platform_config(key TEXT PRIMARY KEY,value TEXT);
 CREATE TABLE IF NOT EXISTS account_controls(user_id INTEGER PRIMARY KEY,suspended INTEGER DEFAULT 0,reason TEXT DEFAULT '');
@@ -20,16 +23,23 @@ CREATE TABLE IF NOT EXISTS refund_requests(id INTEGER PRIMARY KEY,order_id TEXT 
 '''
 PROVIDERS={'stripe':['secret','webhook_secret'],'paypal':['client_id','secret','webhook_id'],'paystack':['secret'],'flutterwave':['secret','webhook_secret']}
 CATALOG=['stripe','paypal','paystack','flutterwave','square','adyen','razorpay','mollie','authorize_net','braintree','checkout_com','payoneer','worldpay','klarna','amazon_pay','apple_pay','google_pay','bank_transfer','crypto']
-DEFAULTS={'min_profile_photos':0,'max_profile_photos':6,'allow_match_percentage':True,'allow_match_location':True,'allow_preferred_languages':True,'registration_open':True,'maintenance':False,'support_email':'','copyright':'Nekked Dating is owned and operated by NEKKED DATING CORPORATIONS. Copyright 2026 NEKKED DATING CORPORATIONS. All rights reserved.','android_url':'','ios_url':'','marketplace_open':False}
+DEFAULTS={'min_profile_photos':0,'max_profile_photos':6,'allow_match_percentage':True,'allow_match_location':True,'allow_preferred_languages':True,'registration_open':True,'maintenance':False,'support_email':'','copyright':'Nekked Dating is owned and operated by NEKKED DATING CORPORATIONS. Copyright 2026 NEKKED DATING CORPORATIONS. All rights reserved.','android_url':'','ios_url':'','marketplace_open':True}
 
 def initialize(c,key_path):
     global KEY_PATH
     KEY_PATH=Path(key_path);c.executescript(SCHEMA)
-    plans=[('plus-month','Plus · 30 days',999,'USD',30,'plus',['Unlimited Likes','Unlimited Undo','All incoming Likes']),('plus-year','Plus · 365 days',9999,'USD',365,'plus',['Unlimited Likes','Unlimited Undo','All incoming Likes']),('premium-month','Premium · 30 days',1999,'USD',30,'premium',['Plus benefits','Five additional Roses per term']),('premium-year','Premium · 365 days',19999,'USD',365,'premium',['Plus benefits','Five additional Roses per term'])]
+    plans=[('plus-month','Plus · 30 days',999,'USD',30,'plus',['Unlimited mutual matches','Unlimited Likes','Unlimited Undo','All incoming Likes']),('plus-year','Plus · 365 days',9999,'USD',365,'plus',['Unlimited mutual matches','Unlimited Likes','Unlimited Undo','All incoming Likes']),('premium-month','Premium · 30 days',1999,'USD',30,'premium',['Unlimited mutual matches','Plus benefits','Five additional Roses per term']),('premium-year','Premium · 365 days',19999,'USD',365,'premium',['Unlimited mutual matches','Plus benefits','Five additional Roses per term'])]
     c.executemany('INSERT OR IGNORE INTO plans VALUES(?,?,?,?,?,?,?,0)',[row[:6]+(json.dumps(row[6]),) for row in plans])
     c.execute("INSERT OR IGNORE INTO products VALUES('roses-5','Five Roses',499,'USD','roses',5,0)")
     for key,value in DEFAULTS.items():c.execute('INSERT OR IGNORE INTO platform_config VALUES(?,?)',(key,json.dumps(value)))
     c.execute('UPDATE platform_config SET value=? WHERE key=? AND value=?',(json.dumps(DEFAULTS['copyright']),'copyright',json.dumps('Copyright 2026 Olamide Olatayo Bello. All rights reserved.')))
+    if not c.execute("SELECT 1 FROM platform_config WHERE key='membership_catalog_v2'").fetchone():
+        for item in plans:
+            c.execute('UPDATE plans SET features=?,published=1 WHERE id=? AND amount_minor=? AND days=? AND tier=?',(json.dumps(item[6]),item[0],item[2],item[4],item[5]))
+        c.execute("INSERT OR REPLACE INTO platform_config VALUES('marketplace_open','true')")
+        c.execute("INSERT INTO platform_config VALUES('membership_catalog_v2','true')")
+        for row in c.execute('SELECT low_id,high_id,created FROM connections').fetchall():
+            c.executemany('INSERT OR IGNORE INTO monthly_match_events VALUES(?,?,?)',[(row[0],row[1],row[2]),(row[1],row[0],row[2])])
     c.execute('INSERT OR IGNORE INTO app_identity SELECT 1,COALESCE(MAX(id),0) FROM users')
     c.execute('UPDATE app_identity SET value=MAX(value,(SELECT COALESCE(MAX(id),0) FROM users)) WHERE id=1')
     c.commit()
@@ -37,7 +47,7 @@ def initialize(c,key_path):
 def role(c,uid):
     row=c.execute('SELECT role FROM account_roles WHERE user_id=?',(uid,)).fetchone();return row[0] if row else 'user'
 def superuser(c,uid):return role(c,uid)=='super_admin'
-def config(c):return DEFAULTS|{r['key']:json.loads(r['value']) for r in c.execute('SELECT * FROM platform_config')}
+def config(c):return DEFAULTS|{r['key']:json.loads(r['value']) for r in c.execute('SELECT * FROM platform_config') if r['key'] in DEFAULTS}
 def audit(c,uid,action,target='',detail=''):
     c.execute('INSERT INTO audit_events(actor,action,target,detail,created) VALUES(?,?,?,?,?)',(uid,action,str(target),detail,time.time()))
 def cipher():
@@ -68,6 +78,14 @@ def entitlements(c,uid):
     rows=c.execute('SELECT * FROM entitlements WHERE user_id=? AND revoked=0 AND expires>?',(uid,time.time())).fetchall()
     tier='premium' if any(r['tier']=='premium' for r in rows) else 'plus' if any(r['tier']=='plus' for r in rows) else 'free'
     return {'tier':tier,'expires':max((r['expires'] for r in rows if r['tier']!='free'),default=None),'rose_credits':sum(r['roses'] for r in rows)}
+
+def match_quota(c,uid):
+    now=datetime.now(timezone.utc)
+    start=now.replace(day=1,hour=0,minute=0,second=0,microsecond=0)
+    end=start.replace(year=start.year+1,month=1) if start.month==12 else start.replace(month=start.month+1)
+    used=c.execute('SELECT COUNT(*) FROM monthly_match_events WHERE user_id=? AND created>=? AND created<?',(uid,start.timestamp(),end.timestamp())).fetchone()[0]
+    paid=entitlements(c,uid)['tier']!='free'
+    return {'used':used,'limit':None if paid else 10,'remaining':None if paid else max(0,10-used),'resets_at':end.isoformat(),'timezone':'UTC'}
 
 def verify_order(c,order):
     if not c.in_transaction:c.execute('BEGIN IMMEDIATE')
@@ -105,7 +123,7 @@ def dispatch(method,path,data,c,u,verify_password):
     uid=u['id'];is_super=superuser(c,uid)
     if path.startswith('/api/super/') and not is_super:return 403,{'error':'Super-admin access required.'}
     if method=='GET':
-        if path=='/api/marketplace':return 200,{'plans':[dict(r)|{'features':json.loads(r['features'])} for r in c.execute('SELECT * FROM plans WHERE published=1')],'products':[dict(r) for r in c.execute('SELECT * FROM products WHERE published=1')],'gateways':[r for r in gateway_list(c) if r['implemented'] and r['enabled'] and r['ready']],'open':config(c)['marketplace_open'],'entitlements':entitlements(c,uid),'billing':'Prepaid fixed-term access; no automatic recurring charges.'}
+        if path=='/api/marketplace':return 200,{'plans':[dict(r)|{'features':json.loads(r['features'])} for r in c.execute('SELECT * FROM plans WHERE published=1')],'products':[dict(r) for r in c.execute('SELECT * FROM products WHERE published=1')],'gateways':[r for r in gateway_list(c) if r['implemented'] and r['enabled'] and r['ready']],'open':config(c)['marketplace_open'],'entitlements':entitlements(c,uid),'match_quota':match_quota(c,uid),'free_plan':{'name':'Free','amount_minor':0,'currency':'USD','features':['Up to 10 new mutual matches per calendar month (UTC)','Message existing matches','Personal symbols and matched compatibility','8 Likes per rolling 24 hours']},'billing':'Prepaid fixed-term access; no automatic recurring charges.'}
         if path=='/api/orders':return 200,{'orders':[dict(r) for r in c.execute('SELECT id,title,amount_minor,currency,gateway,mode,status,created,paid FROM orders WHERE user_id=? ORDER BY created DESC LIMIT 100',(uid,))]}
         if path=='/api/super/overview':
             counts={name:c.execute('SELECT COUNT(*) FROM '+name).fetchone()[0] for name in ['users','connections','messages','reports','support_requests','orders']}
