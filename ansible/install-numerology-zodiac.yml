@@ -266,7 +266,7 @@
                 return_content: true
                 status_code: 200
               register: backend
-              until: backend.status | default(0) == 200 and 'Life path' in (backend.content | default(''))
+              until: backend.status | default(0) == 200 and 'id="personal-symbols"' in (backend.content | default('')) and 'src="/tools.js"' in (backend.content | default(''))
               retries: 15
               delay: 2
             - name: Verify private calculator remains protected
@@ -353,7 +353,7 @@
             validate_certs: true
             return_content: true
           register: public_tools
-          failed_when: public_tools.status != 200 or 'Numerology &amp; matching' not in public_tools.content
+          failed_when: public_tools.status != 200 or 'id="personal-symbols"' not in public_tools.content or 'src="/tools.js"' not in public_tools.content
           when: enable_tls | bool
         - name: Summarize successful install
           ansible.builtin.debug:
