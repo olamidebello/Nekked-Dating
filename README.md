@@ -35,7 +35,7 @@ This version **does not calculate a full natal chart**. Time and location are st
 
 ## Deployment boundary
 
-This is an initial working application, not a public-launch-ready dating service. Before public launch add verified adult onboarding, login/registration rate limits, email verification and account recovery, reporting/blocking/moderation, operational monitoring, backup/deletion policy, and operator-specific privacy/terms/contact details. Messaging, image uploads and payments are not implemented.
+This is an initial working application, not a public-launch-ready dating service. Before public launch add verified adult onboarding, login/registration rate limits, email verification and account recovery, reporting/blocking/moderation, operational monitoring, backup/deletion policy, and operator-specific privacy/terms/contact details. Messaging and payments are not implemented.
 
 Use a TLS reverse proxy and set `NEKKED_SECURE_COOKIE=1` and `NEKKED_ORIGIN=https://your-domain`. Default binding is localhost. Set `NEKKED_HOST`, `PORT`, and `NEKKED_DB` if needed. Restrict database access; it contains sensitive plaintext profile fields. Do not commit the database or secrets. Data deletion removes account and sessions from the live database, but operators must separately manage backups.
 
@@ -58,3 +58,13 @@ Symbolic calculations retain the approximation limits documented above. The Chin
 ## Celestial interface
 
 The interface uses a midnight-purple, rose and gold theme, the supplied dragon/heart logo, responsive orbital hero artwork and three concept cards. Public links navigate to the concept, matching journey and account form. Signed-in navigation opens My story, Discover, My symbols and Privacy with explicit active states. Account creation and sign-in have separate form modes. Saving a profile opens a four-card symbolic overview. Privacy links to the discovery control and account deletion. No sample members or unsupported messaging/payment buttons are shown.
+
+## Reflection, photos and compatibility update
+
+The four prompts ask for an animal and three reasons, a representative color and three reasons, three feelings in a solitary paradise, and three feelings in an inescapable white box where the member is safe and not hungry. Scene descriptions are optional; reasons/feelings support up to 500 characters each. Reflections remain private and do not affect scores.
+
+Members can upload up to six photos, choose the first as their profile picture, reorder the primary photo, and remove photos. The browser resizes to 1200 pixels and re-encodes JPEG to remove original metadata. The server limits uploads to 500 KB and dimensions to 1600 pixels, checks JPEG markers, stores binary images in SQLite, and serves them through authenticated authorization checks. Original image files are not retained. Photos become visible after saving the profile, only to members with mutually eligible age/gender preferences and discovery enabled on both profiles. Uploaded drafts remain available in the editor. Account deletion also removes photos from the live database. Before public launch add robust server-side image decoding/re-encoding, moderation and the other deployment safeguards above.
+
+Expandable symbol cards show traditional meanings for the member and each eligible match: approximate Western sun sign, Gregorian birth-year Chinese animal, life path and name number. Only the owner receives birth-date digit and name-letter arithmetic. Life path sums every date digit; both calculations preserve master numbers 11, 22 and 33 during reduction. These conventions vary by numerology tradition. Match responses never contain the birth date, full name, private reflections or calculation inputs.
+
+Each eligible match shows Love (mean emotional/intimacy alignment), Living (living alignment), Money (financial alignment), and Communication (a separate communication preference, falling back to the stored moods preference for older profiles). Equal preferences score 90 and different preferences 50. Expand each domain for its basis. These are rule-based preference alignment scores, not validated predictions. Existing overall symbolic scoring remains visible.

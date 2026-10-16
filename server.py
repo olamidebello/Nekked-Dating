@@ -1,3 +1,4 @@
+import base64, struct
 import hashlib, hmac, json, os, secrets, sqlite3, time
 from datetime import date, datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -8,7 +9,7 @@ DB = os.environ.get('NEKKED_DB','nekked.sqlite3')
 CATEGORIES = ['emotional','intimacy','financial','living','moods']
 def connect():
     c=sqlite3.connect(DB); c.row_factory=sqlite3.Row
-    c.executescript('CREATE TABLE IF NOT EXISTS users(id INTEGER PRIMARY KEY,email TEXT UNIQUE,password TEXT,profile TEXT); CREATE TABLE IF NOT EXISTS sessions(token TEXT PRIMARY KEY,user_id INTEGER,expires REAL);')
+    c.executescript('CREATE TABLE IF NOT EXISTS users(id INTEGER PRIMARY KEY,email TEXT UNIQUE,password TEXT,profile TEXT); CREATE TABLE IF NOT EXISTS sessions(token TEXT PRIMARY KEY,user_id INTEGER,expires REAL); CREATE TABLE IF NOT EXISTS photos(id TEXT PRIMARY KEY,user_id INTEGER,data BLOB);')
     return c
 
 def password_hash(password,salt=None):
@@ -22,12 +23,12 @@ def validate(p):
     if (today.year-dob.year-((today.month,today.day)<(dob.month,dob.day)))<18: raise ValueError('You must be at least 18.')
     if p.get('birth_time'): datetime.strptime(p['birth_time'],'%H:%M')
     if not isinstance(p.get('discoverable'),bool): raise ValueError('Choose profile visibility.')
-    if set(p.get('preferences',{}))!=set(CATEGORIES) or any(v not in ('similar','flexible','independent') for v in p['preferences'].values()): raise ValueError('Complete compatibility preferences.')
+    if set(p.get('preferences',{})) not in (set(CATEGORIES),set(CATEGORIES)|{'communication'}) or any(v not in ('similar','flexible','independent') for v in p['preferences'].values()): raise ValueError('Complete compatibility preferences.')
     q=p.get('answers',{})
     for k in ['animal','color','paradise','box']:
         a=q.get(k,{})
         if not isinstance(a.get('choice'),str) or not 1<=len(a['choice'])<=1000: raise ValueError('Complete each reflection.')
-        if not isinstance(a.get('words'),list) or len(a['words'])!=3 or any(not isinstance(w,str) or not 1<=len(w.strip())<=80 for w in a['words']): raise ValueError('Provide three words for every reflection.')
+        if not isinstance(a.get('words'),list) or len(a['words'])!=3 or any(not isinstance(w,str) or not 1<=len(w.strip())<=500 for w in a['words']): raise ValueError('Provide three words for every reflection.')
     extra={}
     allowed={'gender':('woman','man','nonbinary','self-described'),'seeking':('woman','man','nonbinary','any'),'relationship_goal':('long-term','marriage','dating','friendship','open-to-exploring'),'children':('','prefer-not-to-say','want-children','have-children','do-not-want','open'),'smoking':('','prefer-not-to-say','non-smoker','smoker','open')}
     for k,choices in allowed.items():
@@ -43,7 +44,25 @@ def validate(p):
         if type(v) is not int or not 18<=v<=120: raise ValueError('Invalid age preference.')
         extra[k]=v
     if extra['min_age']>extra['max_age']: raise ValueError('Age range is reversed.')
+    photos=p.get('photos',[])
+    if not isinstance(photos,list) or len(photos)>6 or any(not isinstance(x,str) or len(x)>64 for x in photos) or len(set(photos))!=len(photos): raise ValueError('Invalid photos.')
+    extra['photos']=photos
     return extra | {k:p[k] for k in ['first_name','last_name','birth_date','birth_location','bio','discoverable','preferences','answers']} | {'birth_time':p.get('birth_time','')}
+
+def validate_jpeg(image):
+    if len(image)>500000 or not image.startswith(b'\xff\xd8') or not image.endswith(b'\xff\xd9'): raise ValueError('Invalid JPEG.')
+    i=2
+    while i+4<=len(image):
+        if image[i]!=255: raise ValueError('Invalid JPEG marker.')
+        marker=image[i+1]; length=int.from_bytes(image[i+2:i+4],'big')
+        if length<2 or i+2+length>len(image): raise ValueError('Invalid JPEG length.')
+        if marker in (192,193,194):
+            if length<8: raise ValueError('Invalid JPEG dimensions.')
+            height,width=struct.unpack('>HH',image[i+5:i+9])
+            if not 1<=width<=1600 or not 1<=height<=1600: raise ValueError('Photo too large.')
+            return
+        i+=2+length
+    raise ValueError('Missing JPEG dimensions.')
 
 class Handler(BaseHTTPRequestHandler):
     def reply(self,status,data):
@@ -61,27 +80,35 @@ class Handler(BaseHTTPRequestHandler):
                 u=self.user(c)
                 if not u: return self.reply(401,{'error':'Please sign in.'})
                 p=json.loads(u['profile']) if u['profile'] else None
-                if self.path=='/api/me': return self.reply(200,{'email':u['email'],'profile':p,'overview':overview(p) if p else None})
+                if self.path=='/api/me': return self.reply(200,{'email':u['email'],'profile':p,'uploaded_photos':[r[0] for r in c.execute('SELECT id FROM photos WHERE user_id=?',(u['id'],))],'overview':overview(p, private=True) if p else None})
+                if self.path.startswith('/api/photos/'):
+                    photo=c.execute('SELECT * FROM photos WHERE id=?',(self.path.rsplit('/',1)[-1],)).fetchone()
+                    if not photo: return self.reply(404,{'error':'Not found.'})
+                    if photo['user_id']!=u['id']:
+                        owner=c.execute('SELECT profile FROM users WHERE id=?',(photo['user_id'],)).fetchone()
+                        other=json.loads(owner['profile']) if owner and owner['profile'] else None
+                        if not p or not other or not p['discoverable'] or not other['discoverable'] or not eligible(p,other) or photo['id'] not in other.get('photos',[]): return self.reply(404,{'error':'Not found.'})
+                    self.send_response(200); self.send_header('Content-Type','image/jpeg'); self.send_header('Cache-Control','no-store'); self.send_header('X-Content-Type-Options','nosniff'); self.end_headers(); self.wfile.write(photo['data']); return
                 if self.path=='/api/matches':
                     if not p: return self.reply(400,{'error':'Save your profile first.'})
                     matches=[]
                     for row in c.execute('SELECT id,profile FROM users WHERE id!=? AND profile IS NOT NULL',(u['id'],)):
                         other=json.loads(row['profile'])
-                        if other['discoverable'] and eligible(p,other): matches.append({'id':row['id'],'name':other['first_name'],'bio':other['bio'],'overview':overview(other),'compatibility':compatibility(p,other)})
+                        if p['discoverable'] and other['discoverable'] and eligible(p,other): matches.append({'id':row['id'],'name':other['first_name'],'bio':other['bio'],'photos':other.get('photos',[]),'overview':overview(other),'compatibility':compatibility(p,other)})
                     return self.reply(200,{'matches':sorted(matches,key=lambda m:m['compatibility']['score'],reverse=True)})
                 return self.reply(404,{'error':'Not found.'})
         files={'/':'index.html','/app.js':'app.js','/style.css':'style.css','/logo.png':'logo.png'}
         if self.path not in files: return self.reply(404,{'error':'Not found.'})
         path=Path(__file__).parent/'static'/files[self.path]; self.send_response(200)
         self.send_header('Content-Type',{'html':'text/html; charset=utf-8','js':'text/javascript','css':'text/css','png':'image/png'}[path.suffix[1:]])
-        self.send_header('Content-Security-Policy',"default-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'")
+        self.send_header('Content-Security-Policy',"default-src 'self'; img-src 'self' blob:; frame-ancestors 'none'; base-uri 'none'; form-action 'self'")
         self.send_header('X-Content-Type-Options','nosniff'); self.end_headers(); self.wfile.write(path.read_bytes())
     def do_POST(self):
         if self.headers.get('Sec-Fetch-Site')=='cross-site': return self.reply(403,{'error':'Cross-site request rejected.'})
         if self.headers.get('Origin') and self.headers['Origin']!=os.environ.get('NEKKED_ORIGIN','http://'+self.headers.get('Host','')): return self.reply(403,{'error':'Origin rejected.'})
         try:
             size=int(self.headers.get('Content-Length',0))
-            if not 0<size<=20000: raise ValueError('Invalid request size.')
+            if not 0<size<=(700000 if self.path=='/api/photos' else 20000): raise ValueError('Invalid request size.')
             data=json.loads(self.rfile.read(size)); self.cookies=[]
             with connect() as c:
                 if self.path in ('/api/register','/api/login'):
@@ -99,12 +126,27 @@ class Handler(BaseHTTPRequestHandler):
                     return self.reply(200,{'ok':True})
                 u=self.user(c)
                 if not u: return self.reply(401,{'error':'Please sign in.'})
+                if self.path=='/api/photos':
+                    if c.execute('SELECT COUNT(*) FROM photos WHERE user_id=?',(u['id'],)).fetchone()[0]>=6: raise ValueError('Six photos maximum.')
+                    image=base64.b64decode(data['image'],validate=True)
+                    validate_jpeg(image)
+                    ident=secrets.token_hex(16); c.execute('INSERT INTO photos VALUES(?,?,?)',(ident,u['id'],image))
+                    return self.reply(200,{'id':ident})
+                if self.path=='/api/photos/delete':
+                    c.execute('DELETE FROM photos WHERE id=? AND user_id=?',(data['id'],u['id']))
+                    if u['profile']:
+                        p=json.loads(u['profile']); p['photos']=[x for x in p.get('photos',[]) if x!=data['id']]; c.execute('UPDATE users SET profile=? WHERE id=?',(json.dumps(p),u['id']))
+                    return self.reply(200,{'ok':True})
                 if self.path=='/api/profile':
-                    p=validate(data); c.execute('UPDATE users SET profile=? WHERE id=?',(json.dumps(p),u['id']))
-                    return self.reply(200,{'ok':True,'overview':overview(p)})
+                    p=validate(data)
+                    owned={r[0] for r in c.execute('SELECT id FROM photos WHERE user_id=?',(u['id'],))}
+                    if not set(p['photos'])<=owned: raise ValueError('Invalid photo ownership.')
+                    c.execute('UPDATE users SET profile=? WHERE id=?',(json.dumps(p),u['id']))
+                    return self.reply(200,{'ok':True,'overview':overview(p, private=True)})
                 if self.path in ('/api/logout','/api/delete'):
                     c.execute('DELETE FROM sessions WHERE user_id=?',(u['id'],))
-                    if self.path=='/api/delete': c.execute('DELETE FROM users WHERE id=?',(u['id'],))
+                    if self.path=='/api/delete':
+                        c.execute('DELETE FROM photos WHERE user_id=?',(u['id'],)); c.execute('DELETE FROM users WHERE id=?',(u['id'],))
                     self.cookies=['session=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0']; return self.reply(200,{'ok':True})
                 return self.reply(404,{'error':'Not found.'})
         except (ValueError,TypeError,KeyError): self.reply(400,{'error':'Invalid input. Check dates and complete required fields.'})
