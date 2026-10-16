@@ -1,0 +1,46 @@
+---
+# Complete local feature installation. Provider-dependent services remain explicitly unavailable.
+# Run from this repository:
+# ansible-playbook -i localhost, -c local ansible/install-social-platform.yml
+- name: Install application, tests, backup, service and optional private translation
+  ansible.builtin.import_playbook: install-numerology-zodiac.yml
+
+- name: Configure social application operations
+  hosts: all
+  become: true
+  gather_facts: false
+  vars:
+    nekked_domain: nekkeddating.com
+    nekked_admin_email: ''
+  tasks:
+    - name: Allow bounded media requests in managed application reverse proxy
+      ansible.builtin.replace:
+        path: '/etc/nginx/sites-available/olamide-auto-{{ nekked_domain }}'
+        regexp: 'client_max_body_size\s+[^;]+;'
+        replace: 'client_max_body_size 8m;'
+    - name: Validate reverse proxy configuration
+      ansible.builtin.command: nginx -t
+      changed_when: false
+    - name: Reload validated reverse proxy
+      ansible.builtin.systemd:
+        name: nginx
+        state: reloaded
+    - name: Grant operator moderation to an existing explicitly selected account
+      ansible.builtin.command:
+        argv: [python3, /opt/nekkeddating-github-current/scripts/grant-admin.py, --db, /var/lib/nekkeddating/nekked.sqlite3, --email, '{{ nekked_admin_email }}']
+      when: nekked_admin_email | length > 0
+      changed_when: true
+    - name: Verify social interface files are installed
+      ansible.builtin.uri:
+        url: http://127.0.0.1:18083/social.js
+        status_code: 200
+    - name: Verify messaging is protected by authentication
+      ansible.builtin.uri:
+        url: http://127.0.0.1:18083/api/conversations
+        status_code: 401
+    - name: Summarize application locations
+      ansible.builtin.debug:
+        msg:
+          - 'Installed Discover, Standouts, Likes, accepted matches, chat, safety, prompts, media and settings.'
+          - 'Optional moderation: create your account, then rerun with -e nekked_admin_email=YOUR_ACCOUNT_EMAIL.'
+          - 'SMS, social login, payments and biometric verification are not configured or simulated.'

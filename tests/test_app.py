@@ -20,17 +20,17 @@ class MatchingTests(unittest.TestCase):
         b.update(gender='man',seeking='woman',min_age=18,max_age=120)
         self.assertTrue(eligible(a,b))
         b['seeking']='man'; self.assertFalse(eligible(a,b))
-        b['seeking']='woman'; a['max_age']=20; self.assertFalse(eligible(a,b))
+        b['seeking']='woman'; a['max_age']=20; self.assertTrue(eligible(a,b))
     def test_name_and_range_validation(self):
         p=profile(); p['birth_name']='Ada Middle Bello'
         self.assertNotEqual(overview(p)['name_number'],overview(profile())['name_number'])
         p.update(min_age=50,max_age=25)
-        with self.assertRaises(ValueError): server.validate(p)
+        self.assertEqual(server.validate(p)['max_age'],25)
         p=profile(); p['birth_name']='中文'; self.assertIsNone(overview(p)['name_number'])
-    def test_goals_affect_alignment(self):
+    def test_profile_preferences_do_not_rank(self):
         a,b=profile(),profile(); a['relationship_goal']=b['relationship_goal']='marriage'
         aligned=compatibility(a,b)['score']; b['relationship_goal']='friendship'
-        self.assertLess(compatibility(a,b)['score'],aligned)
+        self.assertEqual(compatibility(a,b)['score'],aligned)
     def test_private_number_breakdown_and_public_meanings(self):
         p=profile(); public=overview(p); private=overview(p,private=True)
         self.assertNotIn('breakdown',public)
@@ -60,22 +60,35 @@ class APITests(unittest.TestCase):
     def tearDownClass(cls): cls.http.shutdown(); cls.http.server_close(); cls.temp.cleanup()
     def setUp(self):
         with server.connect() as db:
-            for table in ['sessions','photos','users']: db.execute('DELETE FROM '+table)
+            for row in db.execute("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'").fetchall(): db.execute('DELETE FROM '+row[0])
     def client(self): return urllib.request.build_opener(urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar()))
     def call(self,c,path,data=None,headers=None):
         r=urllib.request.Request(self.url+'/api/'+path,data=json.dumps(data).encode() if data is not None else None,headers={'Content-Type':'application/json',**(headers or {})})
         try:
             with c.open(r) as response: return response.status,json.load(response)
         except urllib.error.HTTPError as e: return e.code,json.load(e)
+    def make_match(self,a,b):
+        uid=self.call(b,'me')[1]['id']
+        self.assertEqual(self.call(a,'likes',{'recipient':uid})[0],200)
+        incoming=self.call(b,'likes')[1]['likes']
+        self.assertEqual(len(incoming),1)
+        status,result=self.call(b,'likes/'+str(incoming[0]['id'])+'/accept',{})
+        self.assertEqual(status,200)
+        return result['connection_id']
+    def end_match(self,a):
+        rows=self.call(a,'conversations')[1]['conversations']
+        for row in rows: self.call(a,'conversations/'+str(row['id'])+'/unmatch',{})
     def test_full_account_and_privacy_flow(self):
         a,b=self.client(),self.client()
         self.assertEqual(self.call(a,'me')[0],401)
         for c,email in [(a,'ada@example.com'),(b,'bea@example.com')]:
             self.assertEqual(self.call(c,'register',dict(email=email,password='strong password 123',adult=True))[0],200)
             self.assertEqual(self.call(c,'profile',profile())[0],200)
+        self.make_match(a,b)
         status,result=self.call(a,'matches'); self.assertEqual(status,200); self.assertEqual(len(result['matches']),1)
         public=json.dumps(result); self.assertNotIn('birth_date',public); self.assertNotIn('answers',public); self.assertNotIn('Bello',public); self.assertNotIn('@example',public)
         p=profile(); p['discoverable']=False; self.call(b,'profile',p)
+        self.end_match(a)
         self.assertEqual(self.call(a,'matches')[1]['matches'],[])
         self.assertEqual(self.call(a,'profile',p,{'Origin':'https://evil.example'})[0],403)
         self.assertEqual(self.call(a,'delete',{})[0],200); self.assertEqual(self.call(a,'me')[0],401)
@@ -96,12 +109,14 @@ class APITests(unittest.TestCase):
         self.assertEqual(self.call(a,'profile',pa)[0],200)
         self.assertEqual(self.call(b,'profile',pa)[0],400)
         self.call(b,'profile',profile())
+        self.make_match(a,b)
         with b.open(self.url+'/api/photos/'+ident) as response: self.assertEqual(response.read(),image)
         with self.assertRaises(urllib.error.HTTPError): outsider.open(self.url+'/api/photos/'+ident)
         with self.assertRaises(urllib.error.HTTPError): self.client().open(self.url+'/api/photos/'+ident)
         public=self.call(b,'matches')[1]
         self.assertNotIn('breakdown',json.dumps(public)); self.assertIn('domains',public['matches'][0]['compatibility'])
         pa['discoverable']=False; self.call(a,'profile',pa)
+        self.end_match(a)
         with self.assertRaises(urllib.error.HTTPError): b.open(self.url+'/api/photos/'+ident)
         self.assertEqual(self.call(b,'matches')[1]['matches'],[])
         self.call(a,'photos/delete',{'id':ident})
@@ -117,6 +132,7 @@ class APITests(unittest.TestCase):
         for c,email in [(a,'symbols-a@example.com'),(b,'symbols-b@example.com')]:
             self.call(c,'register',dict(email=email,password='strong password 123',adult=True))
             self.call(c,'profile',profile())
+        self.make_match(a,b)
         with a.open(self.url+'/symbols/me/life_path') as r: self.assertIn(b'/symbol.js',r.read())
         self.assertEqual(self.call(self.client(),'symbols/me/life_path')[0],401)
         own=self.call(a,'symbols/me/name_number')[1]['detail']
@@ -131,8 +147,9 @@ class APITests(unittest.TestCase):
         # Identify the exact second account regardless of other test fixtures.
         with server.connect() as db: ident=db.execute('SELECT id FROM users WHERE email=?',('symbols-b@example.com',)).fetchone()[0]
         p=profile(); p['discoverable']=False; self.call(b,'profile',p)
+        self.end_match(a)
         self.assertEqual(self.call(a,f'symbols/{ident}/life_path')[0],404)
-        p['discoverable']=True; p['max_age']=18; self.call(b,'profile',p)
+        p['discoverable']=True; p.update(gender='man',seeking='woman'); self.call(b,'profile',p)
         self.assertEqual(self.call(a,f'symbols/{ident}/life_path')[0],404)
         self.assertEqual(self.call(a,'symbols/me/unknown')[0],404)
     def test_every_symbol_has_personality_content(self):
@@ -143,28 +160,60 @@ class APITests(unittest.TestCase):
                 for key in ['sun_sign','chinese_zodiac','life_path','name_number']:
                     detail=symbol_detail(p,key)
                     self.assertTrue(detail['personality']); self.assertIsNone(detail['calculation'])
-    def test_calculator_endpoints_and_private_comparisons(self):
+    def test_personal_only_numbers_and_matched_only_comparisons(self):
         a,b=self.client(),self.client()
         for c,email in [(a,'tools-a@example.com'),(b,'tools-b@example.com')]:
-            self.call(c,'register',dict(email=email,password='strong password 123',adult=True))
-            self.call(c,'profile',profile())
-        self.assertEqual(self.call(self.client(),'numerology/calculate',{'name':'John'})[0],401)
-        code,r=self.call(a,'numerology/calculate',{'name':'John','birth_date':'1990-04-15'})
-        self.assertEqual(code,200); self.assertIn('soul_urge',r['core'])
-        self.assertEqual(self.call(a,'numerology/me')[0],200)
-        self.assertEqual(self.call(a,'numerology/calculate',{'birth_date':'bad'})[0],400)
-        self.assertEqual(self.call(a,'numerology/compatibility',{'first':11,'second':2})[0],200)
-        self.assertEqual(self.call(a,'numerology/compatibility',{'first':True,'second':2})[0],400)
-        self.assertEqual(self.call(a,'numerology/angel',{'sequence':'111'})[0],200)
-        self.assertEqual(self.call(a,'astrology/compatibility',{'first':'Aries','second':'Leo','kind':'love'})[0],200)
-        self.assertEqual(self.call(a,'astrology/compatibility',{'first':'No','second':'Leo'})[0],400)
-        self.assertEqual(self.call(a,'numerology/calculate',[])[0],400)
+            self.assertEqual(self.call(c,'register',dict(email=email,password='strong password 123',adult=True,birth_date='1990-04-15',race='Black / African descent',languages='English, Yoruba',religion='Christian'))[0],200)
+            initial=self.call(c,'me')[1]['onboarding']; self.assertEqual(initial['languages'],'English, Yoruba')
+            p=profile(); p.update(race='Black / African descent',religion='Christian',languages='English, Yoruba')
+            self.call(c,'profile',p)
+        for path,data in [('numerology/calculate',{'name':'John'}),('numerology/compatibility',{'first':1,'second':2}),('numerology/angel',{'sequence':'111'}),('astrology/compatibility',{'first':'Aries','second':'Leo'})]:
+            self.assertEqual(self.call(a,path,data)[0],404)
+        self.make_match(a,b)
+        own=self.call(a,'numerology/me')[1]['overview']
+        self.assertEqual(own['master_numbers'],[11]); self.assertNotIn('core',own)
         with server.connect() as db: ident=db.execute('SELECT id FROM users WHERE email=?',('tools-b@example.com',)).fetchone()[0]
         code,result=self.call(a,f'compatibility/{ident}'); self.assertEqual(code,200)
+        self.assertEqual(set(result['report']['methods']),{'zodiac','numerology','life_path','chinese_zodiac'})
         for text in ['birth_date','Bello','1990-04-15','"answers"']: self.assertNotIn(text,json.dumps(result))
-        p=profile(); p['discoverable']=False; self.call(b,'profile',p)
+        matches=self.call(a,'matches')[1]; self.assertEqual(matches['matches'][0]['profile_details']['languages'],'English, Yoruba')
+        self.assertEqual(self.call(a,'match-preference',{'method':'life_path'})[0],200)
+        self.assertEqual(self.call(a,'matches')[1]['preferred_match'],'life_path')
+        self.assertEqual(self.call(a,'match-preference',{'method':'religion'})[0],400)
+        p['discoverable']=False; self.call(b,'profile',p)
+        self.end_match(a)
         self.assertEqual(self.call(a,f'compatibility/{ident}')[0],404)
-        with a.open(self.url+'/tools') as r: self.assertIn(b'/tools.js',r.read())
+        with a.open(self.url+'/tools') as r:
+            html=r.read(); self.assertNotIn(b'chart-form',html); self.assertNotIn(b'pair-directory',html)
+    def test_demographics_do_not_affect_symbolic_scores(self):
+        a,b=profile(),profile(); before=compatibility(a,b)
+        b.update(age=70,race='Other',languages='French',religion='Other',min_age=100,max_age=100)
+        self.assertEqual(before,compatibility(a,b)); self.assertTrue(eligible(a,b))
+    def test_matched_bio_translation_and_access_control(self):
+        from unittest.mock import patch
+        import translation
+        a,b=self.client(),self.client()
+        for c,email in [(a,'translate-a@example.com'),(b,'translate-b@example.com')]:
+            self.call(c,'register',dict(email=email,password='strong password 123',adult=True)); self.call(c,'profile',profile())
+        with server.connect() as db: ident=db.execute('SELECT id FROM users WHERE email=?',('translate-b@example.com',)).fetchone()[0]
+        self.make_match(a,b)
+        calls=[]
+        def provider(path,payload=None):
+            calls.append((path,payload))
+            if path=='/languages': return [{'code':'en','name':'English'},{'code':'fr','name':'French'}]
+            self.assertEqual(payload['q'],profile()['bio']); self.assertEqual(payload['target'],'fr')
+            return {'translatedText':'Des conversations importantes.'}
+        with patch.object(translation,'provider',side_effect=provider):
+            self.assertTrue(self.call(a,'translation/languages')[1]['available'])
+            code,result=self.call(a,f'matches/{ident}/translate',{'target':'fr'}); self.assertEqual(code,200); self.assertIn('conversations',result['text'])
+            self.assertEqual(self.call(a,f'matches/{ident}/translate',{'target':'xx'})[0],400)
+            p=profile(); p['discoverable']=False; self.call(b,'profile',p); self.end_match(a); calls.clear()
+            self.assertEqual(self.call(a,f'matches/{ident}/translate',{'target':'fr'})[0],404); self.assertEqual(calls,[])
+        with patch.object(translation,'provider',side_effect=OSError('offline')):
+            self.assertFalse(self.call(a,'translation/languages')[1]['available'])
+    def test_signup_rejects_underage_birth_date(self):
+        code,result=self.call(self.client(),'register',dict(email='minor@example.com',password='strong password 123',adult=True,birth_date=date.today().isoformat()))
+        self.assertEqual(code,400)
     def test_static_and_no_path_traversal(self):
         c=self.client()
         with c.open(self.url+'/') as response: self.assertIn(b'Be yourself',response.read())

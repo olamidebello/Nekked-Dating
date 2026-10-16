@@ -1,125 +1,95 @@
 # Nekked Dating
 
-A working first version of the handwritten dating concept: reveal who you are, reflect on what matters, and discover symbolic compatibility.
+A self-hosted adult dating application with private personal symbols and explicit mutual matching. Uses Python 3.10+ and SQLite for the application; optional private translation runs separately on the same host.
 
-## Run
-
-Requires Python 3.12 or later, with no external packages.
+## Run and test
 
 ```sh
 python server.py
-```
-
-Open http://127.0.0.1:8000. Create an adult account, save a profile, enable discovery, and use **Discover matches**. A second account can be created in another browser session to exercise matching. There are no fake members. Profile visibility is off by default.
-
-```sh
 python -m unittest discover -s tests -v
 ```
 
-## Implemented
+Open the localhost address printed/configured by your runtime (default `127.0.0.1:8000`). Create adult accounts, save discoverable profiles, open Discover and send an interest. The other member accepts it in Likes You, or sends reciprocal interest, to create a successful match. There are no fabricated profiles or automatic acceptances.
 
-- Registration, sign-in, sign-out, scrypt password hashes, expiring HttpOnly sessions.
-- Server-side age and profile validation; adults only.
-- Private birth date, birth time and location, surname and reflection answers.
-- Animal, color, paradise and white-box prompts, each with three words/feelings.
-- Opt-in discovery; first name, bio and symbolic overview only.
-- Approximate Western sun sign, Gregorian birth-year Chinese zodiac, life-path and Pythagorean name numerology.
-- Explainable matching: equal weights for sun-sign elements, birth-year zodiac, life-path, and stated preferences in emotional connection, intimacy, finances, living together and moods.
-- Responsive interface, accessible labels, account deletion, and persistent SQLite storage.
+## Automated installation
 
-## Meaning and limits
-
-Astrology/numerology scores are entertainment and reflection, not validated predictions. Questionnaire interpretations are self-reflection prompts and do not infer psychological traits or determine rankings. Preference percentages are deterministic rule outputs, not probabilities.
-
-This version **does not calculate a full natal chart**. Time and location are stored for future chart support. Chinese zodiac is explicitly labeled an approximate Gregorian birth-year calculation; Lunar New Year handling is not implemented. Western sun-sign boundaries are approximate, particularly at cusp dates.
-
-## Deployment boundary
-
-This is an initial working application, not a public-launch-ready dating service. Before public launch add verified adult onboarding, login/registration rate limits, email verification and account recovery, reporting/blocking/moderation, operational monitoring, backup/deletion policy, and operator-specific privacy/terms/contact details. Messaging and payments are not implemented.
-
-Use a TLS reverse proxy and set `NEKKED_SECURE_COOKIE=1` and `NEKKED_ORIGIN=https://your-domain`. Default binding is localhost. Set `NEKKED_HOST`, `PORT`, and `NEKKED_DB` if needed. Restrict database access; it contains sensitive plaintext profile fields. Do not commit the database or secrets. Data deletion removes account and sessions from the live database, but operators must separately manage backups.
-
-## Ownership
-
-Copyright 2026 Olamide Olatayo Bello. All rights reserved. No open-source license has been selected.
-
-## Branding
-
-The supplied gold-and-purple zodiac/dragon logo is included unchanged as `static/logo.png`. Slogan: “.. stripe down to your true self to find your true match”.
-
-## Compatible-profile registration
-
-After creating an account (with password confirmation), members complete six grouped sections: identity; private celestial birth details; gender, preferred genders, mutual age range, relationship goal, current city/region, optional interests and family/smoking preferences; optional private full birth name for numerology; relationship preferences; and private reflections. Discovery remains opt-in. The supplied dragon/heart/zodiac logo appears throughout onboarding.
-
-Mutual age and gender choices filter discovery. Relationship goals and disclosed family/smoking preferences contribute to the stated-preference component of the score. Interests and current location are saved privately for future matching support; they do not currently affect ranking. Full birth name is optional and overrides first/last name for Pythagorean numerology. Non-Latin-only names return an unavailable name number. Existing profiles remain compatible with the expanded schema.
-
-Symbolic calculations retain the approximation limits documented above. The Chinese dragon is branding; a member's birth-year animal is calculated from their own date rather than assigned Dragon to everyone. This update is source code only and does not deploy the service.
-
-## Celestial interface
-
-The interface uses a midnight-purple, rose and gold theme, the supplied dragon/heart logo, responsive orbital hero artwork and three concept cards. Public links navigate to the concept, matching journey and account form. Signed-in navigation opens My story, Discover, My symbols and Privacy with explicit active states. Account creation and sign-in have separate form modes. Saving a profile opens a four-card symbolic overview. Privacy links to the discovery control and account deletion. No sample members or unsupported messaging/payment buttons are shown.
-
-## Reflection, photos and compatibility update
-
-The four prompts ask for an animal and three reasons, a representative color and three reasons, three feelings in a solitary paradise, and three feelings in an inescapable white box where the member is safe and not hungry. Scene descriptions are optional; reasons/feelings support up to 500 characters each. Reflections remain private and do not affect scores.
-
-Members can upload up to six photos, choose the first as their profile picture, reorder the primary photo, and remove photos. The browser resizes to 1200 pixels and re-encodes JPEG to remove original metadata. The server limits uploads to 500 KB and dimensions to 1600 pixels, checks JPEG markers, stores binary images in SQLite, and serves them through authenticated authorization checks. Original image files are not retained. Photos become visible after saving the profile, only to members with mutually eligible age/gender preferences and discovery enabled on both profiles. Uploaded drafts remain available in the editor. Account deletion also removes photos from the live database. Before public launch add robust server-side image decoding/re-encoding, moderation and the other deployment safeguards above.
-
-Expandable symbol cards show traditional meanings for the member and each eligible match: approximate Western sun sign, Gregorian birth-year Chinese animal, life path and name number. Only the owner receives birth-date digit and name-letter arithmetic. Life path sums every date digit; both calculations preserve master numbers 11, 22 and 33 during reduction. These conventions vary by numerology tradition. Match responses never contain the birth date, full name, private reflections or calculation inputs.
-
-Each eligible match shows Love (mean emotional/intimacy alignment), Living (living alignment), Money (financial alignment), and Communication (a separate communication preference, falling back to the stored moods preference for older profiles). Equal preferences score 90 and different preferences 50. Expand each domain for its basis. These are rule-based preference alignment scores, not validated predictions. Existing overall symbolic scoring remains visible.
-
-## Dedicated symbol pages
-
-Every symbol tile is a full-card link to `/symbols/me/{kind}` or `/symbols/{match_id}/{kind}`. Supported kinds are sun_sign, chinese_zodiac, life_path and name_number. Pages explain the symbol's traditional personality themes, strengths, growth areas, relationship prompts, calculation method and exact role in matching. Symbols are presented as traditions for reflection, not causes or scientific determinations of personality.
-
-Details load from authenticated `/api/symbols/...` endpoints. Matched-profile requests recheck mutual discovery, age and gender eligibility on every visit, including direct links and refreshes. Only the owner receives the private calculation; matched members see public symbols and interpretations. Pages support direct navigation, refresh, browser Back, links to the other symbols and a return to My symbols or Discover.
-
-## Numerology and zodiac installer
-
-Run on the existing Debian/Ubuntu hosting server, from a checkout of this repository:
+On Debian/Ubuntu, run from an updated checkout of this repository:
 
 ```sh
 sudo apt-get update
-sudo apt-get install -y ansible-core git
-ansible-playbook -i localhost, -c local ansible/install-numerology-zodiac.yml
+sudo apt-get install -y git ansible-core
+sudo ansible-playbook -i localhost, -c local ansible/install-social-platform.yml
 ```
 
-On a fresh host, point public DNS at the server first and enable HTTPS before sign-in:
+The playbook installs the runtime and Nginx, pulls source without discarding local changes, exports and tests a release, stops the app for an SQLite backup, switches the release, restarts and checks endpoints. Failed application activation restores prior code/service settings where present. Database rollback is manual. A shared lock coordinates with the existing hourly updater. Existing TLS configuration is preserved. The social installer raises the managed media request limit to 8 MB. Public DNS must already point to this host for new TLS setup.
+
+Private translation installation is enabled by default and needs a working container registry/model download connection and enough disk/memory for language models. The default language set is English, Spanish and French. Override `translation_languages` to change the installed set, or use `-e install_translation=false` to deploy the app without translation. The backend probes installed languages and shows an honest unavailable state if the local service is not ready. Translation sends only the explicitly selected matched biography or conversation message to localhost; original text remains available.
+
+On a fresh host, add `-e enable_tls=true -e certbot_email=YOUR_EMAIL` to configure a certificate. Secure cookies require HTTPS for sign-in. The default app service is `nekkeddating`, backend port `18083`, persistent database `/var/lib/nekkeddating/nekked.sqlite3` and release link `/opt/nekkeddating-github-current`.
+
+Create and sign in to the operator account first. Grant that existing account moderation access locally, or rerun the social playbook with `-e nekked_admin_email=YOUR_EXISTING_ACCOUNT`:
 
 ```sh
-ansible-playbook -i localhost, -c local ansible/install-numerology-zodiac.yml -e enable_tls=true -e certbot_email=you@example.com
+sudo python3 /opt/nekkeddating-github-current/scripts/grant-admin.py \
+  --db /var/lib/nekkeddating/nekked.sqlite3 --email YOUR_EXISTING_ACCOUNT
 ```
 
-The playbook installs Git, Python and Nginx, checks out main without discarding local edits, exports tracked files, compiles and tests the release, takes an SQLite backup while the service is stopped, switches the release link and checks `/tools` plus authentication on the private chart endpoint. Activation failure restores the previous code/unit and running state when present. Database rollback is deliberately manual. A shared deployment lock coordinates with the existing hourly updater. Existing Nginx/TLS files remain in place; first installations receive an HTTP proxy and optional Certbot HTTPS. The app binds localhost:18083, stores data in `/var/lib/nekkeddating`, and runs as the dedicated `nekkeddating` system account. A fresh HTTP-only installation intentionally cannot sign in with secure cookies until HTTPS is configured. No external service credentials, proprietary code or paid publisher content are installed.
+Roles are stored in the database. Registering with a particular email never grants administrator privileges. No external service credentials or production accounts are fabricated.
 
-Open `/tools` from the public navigation, member navigation, a symbol detail page or a matched-profile comparison link. The standalone calculators require a signed-in account. They process input on the server for the response without storing the submitted calculator data. They do not silently edit your saved profile. You can use a name alone, a business name alone, a date alone, or combine them into a chart. Print/save-as-PDF uses the browser print dialog with a report stylesheet.
+## Personal profile and privacy
 
-### Implemented reference-feature coverage
+- Email/password registration, scrypt hashes, expiring HttpOnly/SameSite sessions and origin checks.
+- Adult birth-date checks; optional race/ethnicity, religion and languages at sign-up, carried into the profile editor. Age is displayed from the private birth date.
+- Profile identity, pronouns, sexuality, gender interests, intentions, job, education, hometown, languages, height, family/pets and lifestyle fields. Members choose which optional details appear publicly.
+- Up to six photos, profile picture selection, reordering and deletion. Uploaded images are resized/re-encoded in the browser; the server bounds JPEG dimensions/size and stores binary data in SQLite.
+- Up to three written public prompts with reordering, a three-choice poll, a seven-day Passing Thought, and optional voice/video prompts.
+- Four private reflections: an animal and three reasons, a color and three reasons, three feelings in a solitary paradise, and three feelings in a safe but inescapable white box. These never appear publicly or affect scores.
+- Your personal-symbol section shows only your zodiac, Chinese zodiac, life path and name result. Master-number descriptions appear only for master numbers actually present in your results. General number catalogs and arbitrary calculators are unavailable through the application APIs.
+- Brief explanations appear first; longer meanings, calculations and methods are click-to-expand. Name-letter and birth-date arithmetic is only available to its owner.
 
-Public feature inventories were reviewed at https://numerologycalc.org/ and https://www.astrology.com/compatibility on 2026-10-16. This implementation uses original text and disclosed rule-based calculations; it is not an integration with or reproduction of those services.
+## Discovery, explicit matching and ranking
 
-| Tool | Implementation |
-| --- | --- |
-| Life path | Component reduction or all-digit reduction, preserving 11/22/33; calculation steps |
-| Name numerology | Expression/destiny, vowel-based Soul Urge, consonant-based Personality; switch Y between vowel and consonant |
-| Birthday / date-only chart | Reduced birth day, life path and personal cycles without a name |
-| Personal cycles | Selected calendar date; personal year/month/day; January 1 year boundary |
-| Business name | Separate Pythagorean and Chaldean business/brand calculations |
-| Full chart | Core numbers, maturity, calculation explanations and per-letter values |
-| Lo Shu | Traditional 3×3 placement, digit frequencies, missing/repeated digits; zeros omitted |
-| Chaldean | Complete A–Z 1–8 mapping, compound total and single-digit root |
-| Name patterns | Hidden Passions (ties retained), Karmic Lessons, detected 13/14/16/19 reduction totals |
-| Life stages | Four Pinnacles and four Challenges with explicit inclusive age ranges |
-| Number guides | 1–9 and master 11/22/33 themes and reflection prompts |
-| Compatibility | Any supported number pairing, 45 single-digit pair shortcuts, explicit root-based standalone scoring |
-| Angel sequences | Validated digit lookup plus 40 shortcuts; original reflection interpretation |
-| Zodiac matching | Western love/work and Chinese animal comparisons; elements, modalities, score basis and discussion prompts |
-| Matched profiles | Per-match report includes love/work/Chinese/numerology and the four preference domains; eligibility rechecked on every request |
-| Report export | Print or save a calculated chart as PDF through the browser |
+Discover returns public teasers, photos, visible details and public prompts for eligible discoverable adult profiles. It never returns symbolic scores or detailed symbol results. Standouts selects up to five suggestions using the internal symbolic ordering, without disclosing comparisons before a match. Pause removes profiles from new discovery and preserves existing matches.
 
-Numerology traditions differ. The new tool defaults to reducing month/day/year separately; saved profile matching retains the earlier all-digit rule. Personal year is reduced birth month + reduced birth day + reduced target year; personal month adds calendar month, personal day adds calendar day. Pinnacles use reduced birth components and preserve master numbers; Challenges use ordinary single-digit components. The first life stage ends at age 36 minus the single-digit life-path root, followed by two nine-year stages and an indefinite fourth. Chaldean always reduces the final root to 1–9. Unsupported names return unavailable name values, not fabricated values. No name means name-based pattern lists are empty.
+Likes can target a profile, photo or prompt and include an optional comment. Roses are stronger interests. Accepting an incoming interest or sending reciprocal interest creates one active match. Declines, Skips and Undo are stored. Free limits are eight Likes per rolling 24 hours, one Rose per rolling seven days and one Undo per rolling seven days. Incoming interests may be sorted by recency or Roses first. Common-word filtering is optional and is not comprehensive moderation.
 
-### Scope still outside this installer
+Only active mutually accepted matches can open zodiac/name numerology/life-path/Chinese-zodiac comparisons, matched symbol pages, private conversations, translated match biographies or on-demand text-message translations. Every relevant request rechecks that connection and blocking state. Guessing a profile/connection ID does not grant access. Unmatching and blocking immediately revoke comparisons and conversation access. Discovery photos/public media are intentionally visible before a match, while private symbol calculations remain restricted.
 
-This is a broad local calculator/matching suite, not every feature or paid product of either external site. It does not install their editorial blog, translated sister sites, browser extension, checkout/email-delivered paid readings, copyrighted reports, proprietary scoring or external integrations. It does not implement full natal charts, exact Lunar New Year boundaries, planetary ephemerides, rising/Moon signs, transits, live horoscopes or full synastry. Western scores use sun-sign elements; Chinese scores use approximate birth-year positions. Love/Living/Money/Communication remain stated-preference alignment rather than astrology predictions. The existing public-launch safeguards documented above remain necessary.
+Matched profiles can be ranked by highest overall potential, zodiac, name numerology, life path or Chinese zodiac. The preference is saved to the profile. Overall potential averages those four available symbolic methods equally. Age, race, language, religion, public prompts, polls, private reflections and relationship preferences do not affect potential scores. Gender interests constrain discovery; adult checks are mandatory. Demographic age/race/religion/language filters are intentionally absent.
+
+The zodiac rule compares classical sun-sign elements. Chinese zodiac uses approximate Gregorian birth-year positions, not exact Lunar New Year boundaries. Life path sums all birth-date digits; name numerology uses normalized Latin A–Z values. Pythagorean reductions preserve 11, 22 and 33. Unavailable name results are omitted from the overall average. All methods expose their arithmetic or score basis on demand. These are entertainment rules, not validated personality or relationship predictions. Full natal charts, Moon/rising signs, transits and planetary synastry are not implemented.
+
+## Messaging, expression and safety
+
+Accepted matches have text chat with a manual Send action, suggested opener, Your Turn indicator, hidden conversations, private notes, private We Met feedback and Unmatch. Chat polls every ten seconds while an open conversation is visible. The endpoint returns the latest 200 messages; full archive pagination is not implemented. Messaging is rate-limited and remains free.
+
+Members can upload WebM audio/video or Ogg audio (4 MB per file; ten files/20 MB total per account). Audio attachments and browser microphone recording support voice notes. Recording is initiated explicitly and limited to one minute. File format support and device permissions depend on the browser. Only authorized discovery/profile viewers or active conversation participants can retrieve referenced media; drafts remain owner-only. Account deletion removes owned media. Media validation checks size, declared type and container signature; production-grade server-side decoding/transcoding and malware screening remain necessary before an unrestricted public launch.
+
+Friend’s Take invitations are unguessable local links expiring after seven days. Guests can submit text without an account. Submissions stay private until the profile owner approves them, and can be hidden/deleted. Invitations are not sent automatically. Guest voice/video/photo submissions are not supported. Poll responses and private meeting feedback are stored without affecting match potential.
+
+Report and Block work from discovery, Likes and chat. Former matches can be reported from Help. Reports, support requests and submitted success stories have a real operator moderation queue. Only approved success stories are publicly displayed. The operator can resolve/dismiss cases and approve/reject stories. Member-submitted reports are allegations, not automated findings.
+
+Settings include Pause, optional approximate activity, in-app notifications, comment filtering, preferred language and measurement units. These preferences are saved; full interface translation/unit conversion is not implemented. Export downloads the member's profile, settings, sent text messages, submitted reports and photo references as JSON; binary media must be downloaded separately. Deletion removes account/profile/session/owned content and revokes connections; reports are anonymized. Backups have separate retention controlled by the operator.
+
+## Navigation and installation on a phone
+
+Public pages include mission, impact, research, newsroom, careers, contact, success stories, history, safety, FAQ, trust, press, matching, identity resources, privacy, terms and accessibility. Pages avoid unsupported statistics or invented company vacancies. Navigation stays within the site. A web manifest and service worker support browser installation where available. Only the public logo is cached; account and API content is never cached by the service worker. This is an installable website, not a native Android/iOS application or an APK.
+
+Member navigation connects Discover, Standouts, Likes You, My matches, Conversations, Profile, My symbols, Privacy, Settings, Help and role-restricted Moderation to their database-backed endpoints.
+
+## Provider-dependent and unfinished inventory
+
+The supplied feature list is broader than this implementation. The app does not claim complete parity with any third-party product. Working local features are described above; these remaining items are explicitly unavailable rather than simulated:
+
+- SMS/email code verification, Google/Apple login and connected-account management.
+- Selfie/face matching, verified identity/age documents and verification badges.
+- Paid subscriptions, purchases, card billing, billing-portal cancellation, paid boosts, priority paid Likes and purchased credit balances.
+- Native mobile apps, push/SMS/email notifications, live calling and native store purchases.
+- Map search/geocoding, distance calculations and subscription-specific demographic filters.
+- Automated prompt feedback, personalized generated openers, Signals badges, contact-list blocking and advanced abuse detection.
+- Multi-format guest Friend’s Takes, photo-specific caption prompts and automated top-photo experiments.
+- Comprehensive legal documents tailored to the operating entity/region and a staffed moderation/response service.
+
+The GUI states when provider-dependent features are not configured. It does not show fake purchases, verified badges, phone checks or connected accounts. Authentication currently means email/password only; email ownership is not verified. Operator privacy/support details, rate limits on authentication, account recovery, robust media processing, and operational monitoring must be completed before unrestricted public launch.
+
+Copyright 2026 Olamide Olatayo Bello. All rights reserved.

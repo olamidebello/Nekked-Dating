@@ -1,0 +1,89 @@
+---
+- name: Install private profile translation
+  hosts: all
+  become: true
+  gather_facts: true
+  vars:
+    translation_image: libretranslate/libretranslate:latest
+    translation_languages: en,es,fr
+    translation_name: nekked-translation
+    translation_port: 18084
+  tasks:
+    - name: Install container runtime
+      ansible.builtin.apt:
+        name: docker.io
+        state: present
+        update_cache: true
+        cache_valid_time: 3600
+    - name: Start container runtime
+      ansible.builtin.systemd:
+        name: docker
+        state: started
+        enabled: true
+    - name: Pull translation service image
+      ansible.builtin.command:
+        argv: [docker, pull, '{{ translation_image }}']
+      register: pulled
+      changed_when: "'Downloaded newer image' in pulled.stdout"
+    - name: Resolve immutable image identity
+      ansible.builtin.command:
+        argv: [docker, image, inspect, '--format={% raw %}{{.Id}}{% endraw %}', '{{ translation_image }}']
+      register: image_identity
+      changed_when: false
+    - name: Inspect existing translation container
+      ansible.builtin.command:
+        argv: [docker, inspect, '{{ translation_name }}']
+      register: existing_translation
+      changed_when: false
+      failed_when: existing_translation.rc not in [0,1]
+    - name: Determine whether translation configuration changed
+      ansible.builtin.set_fact:
+        translation_replace: "{{ existing_translation.rc != 0 or (existing_translation.stdout | default('[]') | from_json)[0].Image != image_identity.stdout or ('LT_LOAD_ONLY=' + translation_languages) not in (existing_translation.stdout | default('[]') | from_json)[0].Config.Env }}"
+      when: existing_translation.rc == 0
+    - name: Remove previous translation container when replacing
+      ansible.builtin.command:
+        argv: [docker, rm, -f, '{{ translation_name }}']
+      when: existing_translation.rc == 0 and translation_replace | bool
+      changed_when: true
+    - name: Create translation service bound only to localhost
+      ansible.builtin.command:
+        argv:
+          - docker
+          - create
+          - --name
+          - '{{ translation_name }}'
+          - --restart
+          - unless-stopped
+          - --publish
+          - '127.0.0.1:{{ translation_port }}:5000'
+          - --env
+          - 'LT_LOAD_ONLY={{ translation_languages }}'
+          - --env
+          - LT_CHAR_LIMIT=2000
+          - --env
+          - LT_REQ_LIMIT=30
+          - --env
+          - LT_DISABLE_WEB_UI=true
+          - --env
+          - LT_DISABLE_FILES_TRANSLATION=true
+          - --env
+          - LT_UPDATE_MODELS=true
+          - '{{ image_identity.stdout }}'
+      when: existing_translation.rc != 0 or translation_replace | default(false) | bool
+      changed_when: true
+    - name: Start translation service
+      ansible.builtin.command:
+        argv: [docker, start, '{{ translation_name }}']
+      changed_when: existing_translation.rc != 0 or translation_replace | default(false) | bool
+    - name: Wait for downloaded language models and API readiness
+      ansible.builtin.uri:
+        url: 'http://127.0.0.1:{{ translation_port }}/languages'
+        status_code: 200
+        return_content: true
+      register: translation_ready
+      until: translation_ready.status | default(0) == 200 and translation_ready.json | default([]) | length > 0
+      retries: 120
+      delay: 10
+    - name: Show translation readiness
+      ansible.builtin.debug:
+        msg: 'Private profile translation ready. Loaded languages: {{ translation_languages }}. No public translation port is exposed.'

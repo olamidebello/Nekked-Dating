@@ -1,0 +1,110 @@
+import unittest, json, base64, os
+import test_app as app_tests
+profile=app_tests.profile
+import server
+
+class SocialTests(unittest.TestCase):
+    setUpClass=classmethod(app_tests.APITests.setUpClass.__func__)
+    tearDownClass=classmethod(app_tests.APITests.tearDownClass.__func__)
+    setUp=app_tests.APITests.setUp
+    client=app_tests.APITests.client
+    call=app_tests.APITests.call
+    make_match=app_tests.APITests.make_match
+    end_match=app_tests.APITests.end_match
+    def accounts(self,count=2):
+        result=[]
+        for i in range(count):
+            c=self.client(); self.assertEqual(self.call(c,'register',{'email':f'social{i}@example.com','password':'strong password 123','adult':True})[0],200)
+            p=profile();p.update(first_name=f'Member{i}',public_prompts=[{'question':'Ask me about…','answer':'Travel and books'}],visible_details=['languages'],languages='English',religion='Private belief')
+            self.assertEqual(self.call(c,'profile',p)[0],200);result.append((c,self.call(c,'me')[1]['id']))
+        return result
+    def test_explicit_matching_and_revocation(self):
+        (a,aid),(b,bid)=self.accounts()
+        suggestions=self.call(a,'discover')[1]['profiles']; self.assertEqual(len(suggestions),1)
+        self.assertNotIn('overview',suggestions[0]);self.assertNotIn('compatibility',suggestions[0]);self.assertNotIn('religion',suggestions[0]['details'])
+        self.assertEqual(self.call(a,'matches')[1]['matches'],[])
+        self.assertEqual(self.call(a,f'compatibility/{bid}')[0],404)
+        self.assertEqual(self.call(a,'likes',{'recipient':bid,'kind':'prompt','target':'0','comment':'I like books too'})[0],200)
+        self.assertEqual(self.call(a,'matches')[1]['matches'],[])
+        incoming=self.call(b,'likes')[1]['likes']; self.assertEqual(incoming[0]['comment'],'I like books too')
+        r=self.call(b,f"likes/{incoming[0]['id']}/accept",{'message':'Hello there'})[1]; cid=r['connection_id']
+        self.assertEqual(len(self.call(a,'matches')[1]['matches']),1)
+        self.assertEqual(self.call(a,f'compatibility/{bid}')[0],200)
+        self.assertEqual(self.call(a,f'conversations/{cid}/messages')[1]['messages'][0]['text'],'Hello there')
+        self.call(a,'settings',{'paused':True})
+        self.assertEqual(self.call(a,'discover')[1]['profiles'],[])
+        self.assertEqual(self.call(a,f'compatibility/{bid}')[0],200)
+        self.assertEqual(self.call(a,f'conversations/{cid}/messages',{'text':'Nice to meet you'})[0],200)
+        self.assertTrue(self.call(b,'conversations')[1]['conversations'][0]['your_turn'])
+        self.call(a,f'conversations/{cid}/unmatch',{})
+        self.assertEqual(self.call(a,f'compatibility/{bid}')[0],404)
+        self.assertEqual(self.call(a,f'conversations/{cid}/messages')[0],404)
+        self.assertEqual(self.call(a,f'conversations/{cid}/messages',{'text':'No'})[0],404)
+        self.assertEqual(self.call(a,'report',{'recipient':bid,'reason':'Unwanted behavior'})[0],200)
+        self.assertEqual(self.call(a,'past-connections')[1]['profiles'][0]['id'],bid)
+    def test_reciprocal_interests_and_blocking(self):
+        (a,aid),(b,bid),(third,tid)=self.accounts(3)
+        self.call(a,'likes',{'recipient':bid}); r=self.call(b,'likes',{'recipient':aid})[1]
+        self.assertTrue(r['matched']);cid=r['connection_id']
+        self.assertEqual(self.call(third,f'conversations/{cid}/messages')[0],404)
+        self.call(a,'block',{'recipient':bid})
+        self.assertEqual(self.call(b,'matches')[1]['matches'],[])
+        self.assertEqual(self.call(b,f'symbols/{aid}/life_path')[0],404)
+        self.assertEqual(self.call(b,'likes',{'recipient':aid})[0],404)
+        self.assertNotIn(aid,[x['id'] for x in self.call(b,'discover')[1]['profiles']])
+    def test_skips_limits_and_decline(self):
+        (a,aid),(b,bid)=self.accounts()
+        self.call(a,'discover/skip',{'recipient':bid});self.assertEqual(self.call(a,'discover')[1]['profiles'],[])
+        self.assertEqual(self.call(a,'discover/undo',{})[0],200)
+        self.call(a,'discover/skip',{'recipient':bid});self.assertEqual(self.call(a,'discover/undo',{})[0],429)
+        self.assertEqual(self.call(b,'likes',{'recipient':aid,'strength':'rose'})[0],200)
+        interest=self.call(a,'likes')[1]['likes'][0]['id'];self.call(a,f'likes/{interest}/decline',{})
+        self.assertEqual(self.call(a,'matches')[1]['matches'],[])
+        self.assertEqual(self.call(b,'likes',{'recipient':aid,'strength':'rose'})[0],429)
+    def test_media_notes_prompts_poll_and_takes(self):
+        (a,aid),(b,bid)=self.accounts()
+        media={'type':'audio/webm','data':base64.b64encode(bytes.fromhex('1a45dfa3')+b'voice-test').decode()}
+        code,result=self.call(a,'media',media);self.assertEqual(code,200);mid=result['id']
+        self.assertEqual(self.call(a,'media',{'type':'text/html','data':media['data']})[0],400)
+        cid=self.make_match(a,b)
+        self.assertEqual(self.call(a,f'conversations/{cid}/messages',{'media_id':mid})[0],200)
+        with b.open(self.url+'/api/media/'+mid) as r:self.assertEqual(r.headers['Content-Type'],'audio/webm')
+        self.assertEqual(self.call(a,f'conversations/{cid}/note',{'note':'Private reminder'})[0],200)
+        self.assertNotIn('Private reminder',json.dumps(self.call(b,'conversations')[1]))
+        self.call(a,'thought',{'text':'A lovely day'});self.call(a,'settings',{'paused':False})
+        invite=self.call(a,'friend-takes/invite',{})[1]['path']
+        self.assertEqual(self.call(self.client(),'public'+invite,{'contributor':'A friend','text':'Kind and thoughtful'})[0],200)
+        takes=self.call(a,'friend-takes')[1]['takes'];self.assertEqual(takes[0]['status'],'pending')
+        self.call(a,'friend-takes/review',{'id':takes[0]['id'],'action':'visible'})
+        self.assertEqual(self.call(b,'friend-takes/review',{'id':takes[0]['id'],'action':'delete'})[0],200)
+        self.assertEqual(len(self.call(a,'friend-takes')[1]['takes']),1)
+        self.end_match(a)
+        import urllib.error
+        with self.assertRaises(urllib.error.HTTPError): b.open(self.url+'/api/media/'+mid)
+    def test_message_translation_checks_connection_and_message(self):
+        from unittest.mock import patch
+        import translation
+        (a,aid),(b,bid),(outsider,oid)=self.accounts(3);cid=self.make_match(a,b)
+        self.call(a,f'conversations/{cid}/messages',{'text':'Hello'})
+        mid=self.call(b,f'conversations/{cid}/messages')[1]['messages'][0]['id']
+        def provider(path,payload=None):
+            if path=='/languages':return [{'code':'fr','name':'French'}]
+            self.assertEqual(payload['q'],'Hello');return {'translatedText':'Bonjour'}
+        with patch.object(translation,'provider',side_effect=provider):
+            self.assertEqual(self.call(b,f'conversations/{cid}/translate',{'message_id':mid,'target':'fr'})[1]['text'],'Bonjour')
+            self.assertEqual(self.call(outsider,f'conversations/{cid}/translate',{'message_id':mid,'target':'fr'})[0],404)
+            self.end_match(a)
+            self.assertEqual(self.call(b,f'conversations/{cid}/translate',{'message_id':mid,'target':'fr'})[0],404)
+    def test_admin_support_export_and_deletion(self):
+        (a,aid),(b,bid)=self.accounts()
+        self.assertEqual(self.call(a,'admin/reports')[0],403)
+        self.call(b,'support',{'subject':'Help','detail':'Please review my account'})
+        self.call(b,'success-story',{'story':'A thoughtful connection'})
+        with server.connect() as db:db.execute("INSERT INTO account_roles VALUES(?,'admin')",(aid,))
+        r=self.call(a,'admin/reports')[1];self.assertEqual(len(r['support']),1)
+        story=r['stories'][0]['id'];self.call(a,'admin/review',{'type':'success_stories','id':story,'status':'approved'})
+        with self.client().open(self.url+'/api/public/stories') as response:self.assertIn(b'A thoughtful connection',response.read())
+        self.assertEqual(self.call(b,'export')[1]['email'],'social1@example.com')
+        self.call(b,'delete',{})
+        with server.connect() as db:
+            self.assertEqual(db.execute('SELECT COUNT(*) FROM success_stories WHERE user_id=?',(bid,)).fetchone()[0],0)

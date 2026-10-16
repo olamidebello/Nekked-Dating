@@ -32,6 +32,7 @@ def overview(p, private=False):
             'life_path': ' + '.join(map(str,digits)) + ' = ' + reduction_steps(sum(digits)),
             'name_number': ' + '.join(f'{c}({v})' for c,v in letters) + ' = ' + reduction_steps(sum(v for c,v in letters)) if letters else 'No supported letters.',
             'method': 'Sum all birth-date digits, then reduce. Name number uses A=1 through I=9, repeating J=1 through Z=8. Preserve 11, 22 and 33 at each reduction. Other numerology traditions may use different methods.'}
+    result['master_numbers']=sorted({n for n in (result['life_path'],result['name_number']) if n in (11,22,33)})
     return result
 
 def reduction_steps(n):
@@ -62,23 +63,31 @@ def compatibility(a,b):
     zodiac = 90 if e==f else 80 if {e,f} in ({0,2},{1,3}) else 55
     delta = (ANIMALS.index(x['chinese_zodiac'])-ANIMALS.index(y['chinese_zodiac']))%12
     chinese = 90 if delta in (4,8) else 45 if delta==6 else 65
-    numerology = 90 if x['life_path']==y['life_path'] else 60
+    life_path = 90 if x['life_path']==y['life_path'] else 60
+    numerology = (90 if x['name_number']==y['name_number'] else 60) if x['name_number'] and y['name_number'] else None
+    methods=[zodiac,chinese,life_path]+([numerology] if numerology is not None else [])
     categories = {k:90 if a['preferences'].get(k,a['preferences']['moods'])==b['preferences'].get(k,b['preferences']['moods']) else 50 for k in set(a['preferences']) | set(b['preferences'])}
     for key in ('relationship_goal','children','smoking'):
         if a.get(key) and b.get(key) and 'prefer-not-to-say' not in (a[key],b[key]):
             categories[key]=90 if a[key]==b[key] else 50
-    return {'score':round((zodiac+chinese+numerology+sum(categories.values())/len(categories))/4),
-            'zodiac':zodiac,'chinese_zodiac':chinese,'numerology':numerology,'categories':categories,
+    return {'score':round(sum(methods)/len(methods)),
+            'zodiac':zodiac,'chinese_zodiac':chinese,'numerology':numerology,'life_path':life_path,'categories':categories,
             'domains': {label: {'score':round(sum(categories[k] for k in keys)/len(keys)), 'basis': 'Preference alignment: '+', '.join(keys)} for label,keys in {'Love':['emotional','intimacy'],'Living':['living'],'Money':['financial'],'Communication':['communication' if 'communication' in categories else 'moods']}.items()},
-            'explanation':'Equal weights: sun-sign element, birth-year zodiac, life-path number, and stated preferences. Questionnaire reflections do not affect ranking.'}
+            'explanation':'Overall potential averages zodiac, Chinese zodiac, life path and available name numerology equally. Age, race, languages, religion and relationship preferences do not contribute to potential.'}
 
+
+def age(p):
+    d=date.fromisoformat(p['birth_date']); today=date.today()
+    return today.year-d.year-((today.month,today.day)<(d.month,d.day))
 
 def eligible(a,b):
-    """Mutual age and stated gender preferences; private fields stay private."""
-    today=date.today()
+    """Adult safety and mutual gender preferences only; demographics never rank or filter adults."""
     def accepts(p,q):
-        d=date.fromisoformat(q['birth_date'])
-        age=today.year-d.year-((today.month,today.day)<(d.month,d.day))
         seeking=p.get('seeking','')
-        return p.get('min_age',18)<=age<=p.get('max_age',120) and (not seeking or seeking=='any' or seeking==q.get('gender'))
+        return age(q)>=18 and (not seeking or seeking=='any' or seeking==q.get('gender'))
     return accepts(a,b) and accepts(b,a)
+
+def matched(a,b):
+    return bool(a and b and a.get('discoverable') and b.get('discoverable') and eligible(a,b))
+
+SORT_METHODS={'overall':'score','zodiac':'zodiac','numerology':'numerology','life_path':'life_path','chinese_zodiac':'chinese_zodiac'}

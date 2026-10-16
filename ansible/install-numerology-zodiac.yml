@@ -362,3 +362,7 @@
             path: '{{ nekked_base }}/numerology-install.lease'
             state: absent
           when: lock_claim is defined and lock_claim.rc | default(1) == 0
+
+- name: Install private translation when enabled
+  ansible.builtin.import_playbook: install-translation.yml
+  when: install_translation | default(true) | bool

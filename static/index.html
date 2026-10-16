@@ -1,6 +1,7 @@
 <!doctype html>
 <html lang="en">
 <head>
+<link rel="manifest" href="/manifest.webmanifest"><meta name="theme-color" content="#241332">
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Nekked Dating · Be seen. Be yourself.</title>
@@ -12,9 +13,9 @@
 <img src="/logo.png" alt="Nekked Dating — gold and purple dragon, zodiac and heart emblem" width="1536" height="1280">
 </a>
 <nav class="public-nav" aria-label="Explore Nekked Dating">
-<a href="#concept">Our universe</a>
+<a href="/community#mission">Mission</a><a href="/community#safety">Safety</a><a href="/community#help">Help</a><button id="install-app" type="button" class="secondary">Install app</button><a href="#concept">Our universe</a>
 <a href="#journey">How it works</a>
-<a href="/tools">Numerology &amp; matching tools</a>
+
 <a href="#auth">Join / Sign in</a>
 </nav>
 </header>
@@ -78,6 +79,7 @@
 </label>
 <label id="adult-label" class="check">
 <input name="adult" type="checkbox"> I am 18 or older (required to join)</label>
+<div id="signup-profile"><label>Birth date (private; used to display age)<input name="birth_date" type="date"></label><div id="signup-demographics" class="grid"></div><small>Race, language and religion are optional profile information. They and age do not affect match potential.</small></div>
 <div class="actions">
 <button id="auth-submit" name="action" value="register">Create account →</button>
 </div>
@@ -85,15 +87,22 @@
 </section>
 <section id="account" hidden>
 <nav class="member-nav" aria-label="Your dating universe">
-<button id="edit" aria-pressed="true">♡ My story</button>
-<button id="discover" aria-pressed="false">✧ Discover</button>
+<button id="discovery-nav" aria-pressed="false">Discover</button><button id="standouts-nav" aria-pressed="false">Standouts</button><button id="likes-nav" aria-pressed="false">Likes You</button><button id="chat-nav" aria-pressed="false">Conversations</button><button id="settings-nav" aria-pressed="false">Settings</button><button id="help-nav" aria-pressed="false">Help</button><button id="admin-nav" aria-pressed="false" hidden>Moderation</button><button id="edit" aria-pressed="true">♡ My personal profile</button>
+<button id="discover" aria-pressed="false">✧ My matches</button>
 <button id="symbols" aria-pressed="false">◎ My symbols</button>
 <button id="privacy" aria-pressed="false">♧ Privacy</button>
-<a class="cta" href="/tools">Charts &amp; compatibility tools</a>
+<a class="cta" href="/tools">My personal numbers</a>
 <button id="logout" class="secondary">Sign out</button>
 </nav>
+<section id="discovery-panel" class="panel" hidden><h2>Discover</h2><p>Show interest in a profile, photo or prompt. Your personal symbol comparisons unlock after an accepted Like or mutual interest.</p><button id="undo-skip" type="button" class="secondary">Undo last Skip</button><div id="discovery-results"></div></section>
+<section id="standouts-panel" class="panel" hidden><h2>Standouts</h2><p>A small selection of your current suggestions.</p><div id="standouts-results"></div></section>
+<section id="likes-panel" class="panel" hidden><h2>Likes You</h2><label>Sort incoming interests<select id="likes-order"><option value="recent">Recent</option><option value="rose">Roses first</option></select></label><div id="likes-results"></div></section>
+<section id="chat-panel" class="panel" hidden><h2>Matches &amp; conversations</h2><label class="check"><input id="show-hidden" type="checkbox"> Show hidden conversations</label><div id="conversation-list"></div><section id="conversation" hidden><h3 id="conversation-name"></h3><div id="message-list" role="log" aria-live="polite"></div><form id="message-form"><label>Message<textarea name="text" maxlength="2000"></textarea></label><button>Send</button><label>Voice note file (WebM or Ogg, up to 4 MB)<input id="voice-file" type="file" accept="audio/webm,audio/ogg"></label><button id="record-voice" type="button" class="secondary">Record voice note</button><button id="conversation-starter" type="button" class="secondary">Suggest an opener</button></form><div class="actions"><button id="hide-conversation" type="button" class="secondary">Hide conversation</button><button id="match-note" type="button" class="secondary">Private match note</button><button id="we-met" type="button" class="secondary">We met · private feedback</button><button id="unmatch" type="button" class="danger">Unmatch</button><button id="report-conversation" type="button" class="danger">Report profile</button><button id="block-conversation" type="button" class="danger">Block profile</button><button id="translate-conversation-profile" type="button" class="secondary">Open matched profile &amp; translation</button></div></section></section>
+<section id="settings-panel" class="panel" hidden><h2>Account settings</h2><form id="settings-form"><label class="check"><input name="paused" type="checkbox"> Pause new discoveries (keep existing matches)</label><label class="check"><input name="show_active" type="checkbox"> Share approximate activity</label><label class="check"><input name="notifications" type="checkbox"> In-app notifications</label><label class="check"><input name="comment_filter" type="checkbox"> Filter common offensive words from incoming Like comments</label><label>Preferred language<select name="language"><option value="en">English</option><option value="es">Spanish</option><option value="fr">French</option><option value="de">German</option><option value="pt">Portuguese</option><option value="ar">Arabic</option><option value="yo">Yoruba</option></select></label><label>Measurements<select name="units"><option value="metric">Metric</option><option value="imperial">Imperial</option></select></label><button>Save settings</button></form><button id="export-data" type="button">Download my personal data</button><h3>Notifications</h3><button id="read-notifications" type="button" class="secondary">Mark all read</button><div id="notification-list"></div><details><summary>Account services</summary><p id="capability-status"></p><p>Free limits: eight Likes in a rolling 24 hours, one Rose and one Undo in a rolling seven days. Messaging is free for accepted matches. No paid plan is active.</p></details></section>
+<section id="help-panel" class="panel" hidden><h2>Help &amp; support</h2><a href="/community#safety">Safe dating guidance</a><form id="support-form"><label>Subject<input name="subject" maxlength="200" required></label><label>How can we help?<textarea name="detail" maxlength="3000" required></textarea></label><button>Submit support request</button></form><div id="support-list"></div><details><summary>Report a former match</summary><div id="former-matches"></div></details><details><summary>Share a success story</summary><form id="success-form"><label>Your story<textarea name="story" maxlength="3000" required></textarea></label><button>Submit for review</button></form></details></section>
+<section id="admin-panel" class="panel" hidden><h2>Moderation queue</h2><div id="admin-results"></div></section>
 <section id="profile" class="panel">
-<h2>Create your compatible profile</h2>
+<h2>My personal profile</h2><p id="personal-summary"></p>
 <p>Complete your private birth details and choose what matters in a relationship. You control when your profile becomes discoverable.</p>
 <form id="profile-form">
 <fieldset>
@@ -124,7 +133,7 @@
 </textarea>
 </label>
 </div>
-<div id="match-fields" class="grid">
+<fieldset><legend>Your public prompts</legend><p>Answer up to three prompts. These are visible on your discovery profile; your four reflection answers remain private.</p><div id="public-prompts"></div><label>Poll question (optional)<input name="poll_question" maxlength="200"></label><div class="grid"><label>Option 1<input name="poll_0" maxlength="100"></label><label>Option 2<input name="poll_1" maxlength="100"></label><label>Option 3<input name="poll_2" maxlength="100"></label></div><label>Voice/video prompt (WebM or Ogg, up to 4 MB)<input id="profile-media-upload" type="file" accept="audio/webm,audio/ogg,video/webm"></label><div id="profile-media-list"></div><details><summary>Passing Thought · visible for seven days</summary><label>Your thought<textarea id="passing-thought" maxlength="500"></textarea></label><button id="post-thought" type="button">Post / clear thought</button></details><details><summary>Friend’s Take</summary><button id="invite-friend" type="button">Create private invitation link</button><p id="friend-link"></p><button id="review-takes" type="button">Review submissions</button><div id="friend-takes"></div></details></fieldset><fieldset><legend>Visible profile details</legend><div id="visible-details" class="grid"></div><button id="preview-profile" type="button" class="secondary">Preview saved public profile</button><div id="profile-preview"></div></fieldset><div id="profile-demographics" class="grid"></div><div id="match-fields" class="grid">
 </div>
 </fieldset>
 <fieldset>
@@ -134,9 +143,9 @@
 </label>
 <p>Uses the Pythagorean A–Z letter system; names without Latin letters do not receive a name number.</p>
 </fieldset>
-<fieldset><legend>Profile picture &amp; pictures</legend><p>Add up to six pictures. The first is your profile picture. Photos appear only to signed-in members who meet your mutual matching preferences when discovery is enabled. Uploads are resized and re-encoded to JPEG to remove original file metadata.</p><label>Add pictures (JPEG, PNG, WebP; up to 10 MB each)<input id="photo-upload" type="file" accept="image/jpeg,image/png,image/webp" multiple></label><div id="photo-list" class="grid"></div></fieldset>
+<fieldset><legend>Profile picture &amp; pictures</legend><p>Add up to six pictures. The first is your profile picture. Photos appear only to matched members when discovery is enabled.</p><label>Add pictures (JPEG, PNG, WebP; up to 10 MB each)<input id="photo-upload" type="file" accept="image/jpeg,image/png,image/webp" multiple></label><div id="photo-list" class="grid"></div></fieldset>
 <h3>5 · What feels right for you?</h3>
-<p>Choose your preference in each area. Shared answers contribute to your match score.</p>
+<p>Choose your preference in each area. These describe your preferences and do not change symbolic match potential.</p>
 <div id="preferences" class="grid">
 </div>
 <h3>6 · Beyond the surface</h3>
@@ -144,12 +153,12 @@
 <div id="questions">
 </div>
 <label class="check">
-<input name="discoverable" type="checkbox"> Show my first name, bio, pictures, zodiac and numerology to eligible signed-in matches</label>
+<input name="discoverable" type="checkbox"> Show my first name, age, optional profile information, bio, pictures and symbols to my matched profiles</label>
 <button>Save my compatible profile</button>
 </form>
 </section>
 <section id="matches" class="panel" hidden>
-<h2>Connections worth exploring</h2><p>Only profiles meeting mutual age and gender preferences appear here. Enable your discovery to view matches. Love, Living, Money and Communication scores compare your stated preferences; they do not predict relationship outcomes.</p>
+<h2>My matched profiles</h2><p>Calculations run automatically for your matched profiles. Choose which method matters most to you.</p><label>Rank my matches by<select id="match-order"><option value="overall">Highest overall potential</option><option value="zodiac">Zodiac compatibility</option><option value="numerology">Name numerology</option><option value="life_path">Life path</option><option value="chinese_zodiac">Chinese zodiac</option></select></label><details><summary>How matching works</summary><p>A successful match requires an accepted Like or mutual interest. Both profiles must be discoverable and meet mutual gender preferences when connecting. Adults only. Overall potential averages the available four symbolic methods equally. Age, race, language and religion do not contribute to scores or filter adult profiles. These scores are reflection prompts, not predictions.</p></details>
 <div id="results">
 </div>
 </section>
@@ -164,7 +173,7 @@
 <section id="privacy-panel" class="panel" hidden>
 <small>YOUR STORY BELONGS TO YOU</small>
 <h2>Privacy & visibility</h2>
-<p>Discovery is off until you choose to enable it in My story. Your email, surname, birth details, full birth name, location and reflection answers remain private.</p>
+<p>Discovery is off until you choose to enable it in My story. Your email, surname, birth details, full birth name, location and reflection answers remain private. Age and any race, religion or languages you choose to provide appear only to matched profiles.</p>
 <button id="visibility-edit">Manage visibility in My story</button>
 <p>Deleting your account removes your profile and sessions from the live database. Backup retention is managed separately by the operator.</p>
 <button id="delete" class="danger">Delete account and answers</button>
@@ -174,11 +183,12 @@
 <p>Astrology and numerology are for entertainment and reflection. Scores do not predict relationship success. Birth time and location are saved for future chart support; this version calculates an approximate sun sign only.</p>
 <details>
 <summary>Privacy & community</summary>
-<p>Your email, surname, birth details and reflections are private. Discovery is opt-in. Delete your account to remove stored account data. Data is stored on this server; the operator must provide a privacy contact before public launch. This early version has no messaging, reporting or blocking. Respect boundaries and never share sensitive details in your public bio.</p>
+<p>Your email, surname, birth details and reflections are private. Discovery is opt-in. Delete your account to remove stored account data. Data is stored on this server; the operator must provide a privacy contact before public launch. Use reporting and blocking for unwanted behavior. Selfie and identity verification are not yet enabled. Respect boundaries and never share sensitive details in your public bio.</p>
 </details>
 </footer>
 </main>
 <script src="/app.js">
 </script>
+<script src="/social.js"></script>
 </body>
 </html>
