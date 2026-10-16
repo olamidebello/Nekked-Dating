@@ -1,4 +1,4 @@
-import unittest, json, hmac,hashlib,time,subprocess
+import unittest, json, hmac,hashlib,time,subprocess,sys
 from unittest.mock import patch
 import test_social as social_tests
 import test_app as app_tests
@@ -80,9 +80,9 @@ class CommerceTests(unittest.TestCase):
         self.assertEqual(self.call(a,'super/settings',{'android_url':'javascript:alert(1)'})[0],400)
         self.assertEqual(self.call(a,'super/settings',{'android_url':'https://nekkeddating.com/releases/app.apk'})[0],200)
         with self.client().open(self.url+'/api/public/platform') as response:self.assertIn('releases/app.apk',json.load(response)['android_url'])
-        completed=subprocess.run(['python','scripts/grant-admin.py','--db',server.DB,'--email','social1@example.com','--role','super_admin','--defer'],capture_output=True,text=True)
+        completed=subprocess.run([sys.executable,'scripts/grant-admin.py','--db',server.DB,'--email','social1@example.com','--role','super_admin','--defer'],capture_output=True,text=True)
         self.assertEqual(completed.returncode,0);self.assertIn('APPLIED',completed.stdout)
         self.assertEqual(self.call(b,'super/overview')[0],200)
-        missing=subprocess.run(['python','scripts/grant-admin.py','--db',server.DB,'--email','kendollreign@gmail.com','--role','super_admin','--defer'],capture_output=True,text=True)
+        missing=subprocess.run([sys.executable,'scripts/grant-admin.py','--db',server.DB,'--email','kendollreign@gmail.com','--role','super_admin','--defer'],capture_output=True,text=True)
         self.assertIn('PENDING',missing.stdout)
         with server.connect() as db:self.assertEqual(db.execute("SELECT status FROM access_intents WHERE email='kendollreign@gmail.com'").fetchone()[0],'pending_existing_account')
