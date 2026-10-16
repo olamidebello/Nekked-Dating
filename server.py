@@ -6,6 +6,8 @@ from pathlib import Path
 from http.cookies import SimpleCookie
 from matching import overview, compatibility, eligible
 from symbol_details import symbol_detail
+from numerology import chart, number_pair, angel
+from astrology_tools import zodiac_pair, match_report
 DB = os.environ.get('NEKKED_DB','nekked.sqlite3')
 CATEGORIES = ['emotional','intimacy','financial','living','moods']
 def connect():
@@ -91,6 +93,15 @@ class Handler(BaseHTTPRequestHandler):
                     other=json.loads(row['profile']) if row and row['profile'] else None
                     if not p or not other or not p['discoverable'] or not other['discoverable'] or not eligible(p,other): return self.reply(404,{'error':'This match is no longer available.'})
                     return self.reply(200,{'subject':other['first_name'],'detail':symbol_detail(other,key)})
+                if self.path=='/api/numerology/me':
+                    if not p: return self.reply(400,{'error':'Save your profile first.'})
+                    return self.reply(200,chart({'name':p.get('birth_name') or (p['first_name']+' '+p['last_name']),'birth_date':p['birth_date']}))
+                comparison=re.fullmatch(r'/api/compatibility/([1-9][0-9]*)',self.path)
+                if comparison:
+                    row=c.execute('SELECT profile FROM users WHERE id=? AND id!=?',(int(comparison[1]),u['id'])).fetchone()
+                    other=json.loads(row['profile']) if row and row['profile'] else None
+                    if not p or not other or not p['discoverable'] or not other['discoverable'] or not eligible(p,other): return self.reply(404,{'error':'This match is no longer available.'})
+                    return self.reply(200,{'name':other['first_name'],'report':match_report(p,other)})
                 if self.path=='/api/me': return self.reply(200,{'email':u['email'],'profile':p,'uploaded_photos':[r[0] for r in c.execute('SELECT id FROM photos WHERE user_id=?',(u['id'],))],'overview':overview(p, private=True) if p else None})
                 if self.path.startswith('/api/photos/'):
                     photo=c.execute('SELECT * FROM photos WHERE id=?',(self.path.rsplit('/',1)[-1],)).fetchone()
@@ -110,7 +121,7 @@ class Handler(BaseHTTPRequestHandler):
                 return self.reply(404,{'error':'Not found.'})
         files={'/':'index.html','/app.js':'app.js','/style.css':'style.css','/logo.png':'logo.png'}
         if re.fullmatch(r'/symbols/(me|[1-9][0-9]*)/(sun_sign|chinese_zodiac|life_path|name_number)',self.path): files[self.path]='symbol.html'
-        files['/symbol.js']='symbol.js'
+        files.update({'/symbol.js':'symbol.js','/tools':'tools.html','/tools.js':'tools.js'})
         if self.path not in files: return self.reply(404,{'error':'Not found.'})
         path=Path(__file__).parent/'static'/files[self.path]; self.send_response(200)
         self.send_header('Content-Type',{'html':'text/html; charset=utf-8','js':'text/javascript','css':'text/css','png':'image/png'}[path.suffix[1:]])
@@ -123,6 +134,7 @@ class Handler(BaseHTTPRequestHandler):
             size=int(self.headers.get('Content-Length',0))
             if not 0<size<=(700000 if self.path=='/api/photos' else 20000): raise ValueError('Invalid request size.')
             data=json.loads(self.rfile.read(size)); self.cookies=[]
+            if not isinstance(data,dict): raise ValueError('Expected an object.')
             with connect() as c:
                 if self.path in ('/api/register','/api/login'):
                     email=data.get('email','').strip().lower(); password=data.get('password','')
@@ -139,6 +151,10 @@ class Handler(BaseHTTPRequestHandler):
                     return self.reply(200,{'ok':True})
                 u=self.user(c)
                 if not u: return self.reply(401,{'error':'Please sign in.'})
+                if self.path=='/api/numerology/calculate': return self.reply(200,chart(data))
+                if self.path=='/api/numerology/compatibility': return self.reply(200,number_pair(data.get('first'),data.get('second')))
+                if self.path=='/api/numerology/angel': return self.reply(200,angel(data.get('sequence')))
+                if self.path=='/api/astrology/compatibility': return self.reply(200,zodiac_pair(data.get('first'),data.get('second'),data.get('kind','love')))
                 if self.path=='/api/photos':
                     if c.execute('SELECT COUNT(*) FROM photos WHERE user_id=?',(u['id'],)).fetchone()[0]>=6: raise ValueError('Six photos maximum.')
                     image=base64.b64decode(data['image'],validate=True)

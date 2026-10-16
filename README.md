@@ -74,3 +74,52 @@ Each eligible match shows Love (mean emotional/intimacy alignment), Living (livi
 Every symbol tile is a full-card link to `/symbols/me/{kind}` or `/symbols/{match_id}/{kind}`. Supported kinds are sun_sign, chinese_zodiac, life_path and name_number. Pages explain the symbol's traditional personality themes, strengths, growth areas, relationship prompts, calculation method and exact role in matching. Symbols are presented as traditions for reflection, not causes or scientific determinations of personality.
 
 Details load from authenticated `/api/symbols/...` endpoints. Matched-profile requests recheck mutual discovery, age and gender eligibility on every visit, including direct links and refreshes. Only the owner receives the private calculation; matched members see public symbols and interpretations. Pages support direct navigation, refresh, browser Back, links to the other symbols and a return to My symbols or Discover.
+
+## Numerology and zodiac installer
+
+Run on the existing Debian/Ubuntu hosting server, from a checkout of this repository:
+
+```sh
+sudo apt-get update
+sudo apt-get install -y ansible-core git
+ansible-playbook -i localhost, -c local ansible/install-numerology-zodiac.yml
+```
+
+On a fresh host, point public DNS at the server first and enable HTTPS before sign-in:
+
+```sh
+ansible-playbook -i localhost, -c local ansible/install-numerology-zodiac.yml -e enable_tls=true -e certbot_email=you@example.com
+```
+
+The playbook installs Git, Python and Nginx, checks out main without discarding local edits, exports tracked files, compiles and tests the release, takes an SQLite backup while the service is stopped, switches the release link and checks `/tools` plus authentication on the private chart endpoint. Activation failure restores the previous code/unit and running state when present. Database rollback is deliberately manual. A shared deployment lock coordinates with the existing hourly updater. Existing Nginx/TLS files remain in place; first installations receive an HTTP proxy and optional Certbot HTTPS. The app binds localhost:18083, stores data in `/var/lib/nekkeddating`, and runs as the dedicated `nekkeddating` system account. A fresh HTTP-only installation intentionally cannot sign in with secure cookies until HTTPS is configured. No external service credentials, proprietary code or paid publisher content are installed.
+
+Open `/tools` from the public navigation, member navigation, a symbol detail page or a matched-profile comparison link. The standalone calculators require a signed-in account. They process input on the server for the response without storing the submitted calculator data. They do not silently edit your saved profile. You can use a name alone, a business name alone, a date alone, or combine them into a chart. Print/save-as-PDF uses the browser print dialog with a report stylesheet.
+
+### Implemented reference-feature coverage
+
+Public feature inventories were reviewed at https://numerologycalc.org/ and https://www.astrology.com/compatibility on 2026-10-16. This implementation uses original text and disclosed rule-based calculations; it is not an integration with or reproduction of those services.
+
+| Tool | Implementation |
+| --- | --- |
+| Life path | Component reduction or all-digit reduction, preserving 11/22/33; calculation steps |
+| Name numerology | Expression/destiny, vowel-based Soul Urge, consonant-based Personality; switch Y between vowel and consonant |
+| Birthday / date-only chart | Reduced birth day, life path and personal cycles without a name |
+| Personal cycles | Selected calendar date; personal year/month/day; January 1 year boundary |
+| Business name | Separate Pythagorean and Chaldean business/brand calculations |
+| Full chart | Core numbers, maturity, calculation explanations and per-letter values |
+| Lo Shu | Traditional 3×3 placement, digit frequencies, missing/repeated digits; zeros omitted |
+| Chaldean | Complete A–Z 1–8 mapping, compound total and single-digit root |
+| Name patterns | Hidden Passions (ties retained), Karmic Lessons, detected 13/14/16/19 reduction totals |
+| Life stages | Four Pinnacles and four Challenges with explicit inclusive age ranges |
+| Number guides | 1–9 and master 11/22/33 themes and reflection prompts |
+| Compatibility | Any supported number pairing, 45 single-digit pair shortcuts, explicit root-based standalone scoring |
+| Angel sequences | Validated digit lookup plus 40 shortcuts; original reflection interpretation |
+| Zodiac matching | Western love/work and Chinese animal comparisons; elements, modalities, score basis and discussion prompts |
+| Matched profiles | Per-match report includes love/work/Chinese/numerology and the four preference domains; eligibility rechecked on every request |
+| Report export | Print or save a calculated chart as PDF through the browser |
+
+Numerology traditions differ. The new tool defaults to reducing month/day/year separately; saved profile matching retains the earlier all-digit rule. Personal year is reduced birth month + reduced birth day + reduced target year; personal month adds calendar month, personal day adds calendar day. Pinnacles use reduced birth components and preserve master numbers; Challenges use ordinary single-digit components. The first life stage ends at age 36 minus the single-digit life-path root, followed by two nine-year stages and an indefinite fourth. Chaldean always reduces the final root to 1–9. Unsupported names return unavailable name values, not fabricated values. No name means name-based pattern lists are empty.
+
+### Scope still outside this installer
+
+This is a broad local calculator/matching suite, not every feature or paid product of either external site. It does not install their editorial blog, translated sister sites, browser extension, checkout/email-delivered paid readings, copyrighted reports, proprietary scoring or external integrations. It does not implement full natal charts, exact Lunar New Year boundaries, planetary ephemerides, rising/Moon signs, transits, live horoscopes or full synastry. Western scores use sun-sign elements; Chinese scores use approximate birth-year positions. Love/Living/Money/Communication remain stated-preference alignment rather than astrology predictions. The existing public-launch safeguards documented above remain necessary.

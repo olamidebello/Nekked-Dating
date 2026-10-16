@@ -58,6 +58,9 @@ class APITests(unittest.TestCase):
         threading.Thread(target=cls.http.serve_forever,daemon=True).start()
     @classmethod
     def tearDownClass(cls): cls.http.shutdown(); cls.http.server_close(); cls.temp.cleanup()
+    def setUp(self):
+        with server.connect() as db:
+            for table in ['sessions','photos','users']: db.execute('DELETE FROM '+table)
     def client(self): return urllib.request.build_opener(urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar()))
     def call(self,c,path,data=None,headers=None):
         r=urllib.request.Request(self.url+'/api/'+path,data=json.dumps(data).encode() if data is not None else None,headers={'Content-Type':'application/json',**(headers or {})})
@@ -140,6 +143,28 @@ class APITests(unittest.TestCase):
                 for key in ['sun_sign','chinese_zodiac','life_path','name_number']:
                     detail=symbol_detail(p,key)
                     self.assertTrue(detail['personality']); self.assertIsNone(detail['calculation'])
+    def test_calculator_endpoints_and_private_comparisons(self):
+        a,b=self.client(),self.client()
+        for c,email in [(a,'tools-a@example.com'),(b,'tools-b@example.com')]:
+            self.call(c,'register',dict(email=email,password='strong password 123',adult=True))
+            self.call(c,'profile',profile())
+        self.assertEqual(self.call(self.client(),'numerology/calculate',{'name':'John'})[0],401)
+        code,r=self.call(a,'numerology/calculate',{'name':'John','birth_date':'1990-04-15'})
+        self.assertEqual(code,200); self.assertIn('soul_urge',r['core'])
+        self.assertEqual(self.call(a,'numerology/me')[0],200)
+        self.assertEqual(self.call(a,'numerology/calculate',{'birth_date':'bad'})[0],400)
+        self.assertEqual(self.call(a,'numerology/compatibility',{'first':11,'second':2})[0],200)
+        self.assertEqual(self.call(a,'numerology/compatibility',{'first':True,'second':2})[0],400)
+        self.assertEqual(self.call(a,'numerology/angel',{'sequence':'111'})[0],200)
+        self.assertEqual(self.call(a,'astrology/compatibility',{'first':'Aries','second':'Leo','kind':'love'})[0],200)
+        self.assertEqual(self.call(a,'astrology/compatibility',{'first':'No','second':'Leo'})[0],400)
+        self.assertEqual(self.call(a,'numerology/calculate',[])[0],400)
+        with server.connect() as db: ident=db.execute('SELECT id FROM users WHERE email=?',('tools-b@example.com',)).fetchone()[0]
+        code,result=self.call(a,f'compatibility/{ident}'); self.assertEqual(code,200)
+        for text in ['birth_date','Bello','1990-04-15','"answers"']: self.assertNotIn(text,json.dumps(result))
+        p=profile(); p['discoverable']=False; self.call(b,'profile',p)
+        self.assertEqual(self.call(a,f'compatibility/{ident}')[0],404)
+        with a.open(self.url+'/tools') as r: self.assertIn(b'/tools.js',r.read())
     def test_static_and_no_path_traversal(self):
         c=self.client()
         with c.open(self.url+'/') as response: self.assertIn(b'Be yourself',response.read())
