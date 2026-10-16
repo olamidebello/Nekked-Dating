@@ -20,7 +20,7 @@ CREATE TABLE IF NOT EXISTS refund_requests(id INTEGER PRIMARY KEY,order_id TEXT 
 '''
 PROVIDERS={'stripe':['secret','webhook_secret'],'paypal':['client_id','secret','webhook_id'],'paystack':['secret'],'flutterwave':['secret','webhook_secret']}
 CATALOG=['stripe','paypal','paystack','flutterwave','square','adyen','razorpay','mollie','authorize_net','braintree','checkout_com','payoneer','worldpay','klarna','amazon_pay','apple_pay','google_pay','bank_transfer','crypto']
-DEFAULTS={'registration_open':True,'maintenance':False,'support_email':'','copyright':'Copyright 2026 Olamide Olatayo Bello. All rights reserved.','android_url':'','ios_url':'','marketplace_open':False}
+DEFAULTS={'registration_open':True,'maintenance':False,'support_email':'','copyright':'Nekked Dating is owned and operated by NEKKED DATING CORPORATIONS. Copyright 2026 NEKKED DATING CORPORATIONS. All rights reserved.','android_url':'','ios_url':'','marketplace_open':False}
 
 def initialize(c,key_path):
     global KEY_PATH
@@ -29,6 +29,7 @@ def initialize(c,key_path):
     c.executemany('INSERT OR IGNORE INTO plans VALUES(?,?,?,?,?,?,?,0)',[row[:6]+(json.dumps(row[6]),) for row in plans])
     c.execute("INSERT OR IGNORE INTO products VALUES('roses-5','Five Roses',499,'USD','roses',5,0)")
     for key,value in DEFAULTS.items():c.execute('INSERT OR IGNORE INTO platform_config VALUES(?,?)',(key,json.dumps(value)))
+    c.execute('UPDATE platform_config SET value=? WHERE key=? AND value=?',(json.dumps(DEFAULTS['copyright']),'copyright',json.dumps('Copyright 2026 Olamide Olatayo Bello. All rights reserved.')))
     c.execute('INSERT OR IGNORE INTO app_identity SELECT 1,COALESCE(MAX(id),0) FROM users')
     c.execute('UPDATE app_identity SET value=MAX(value,(SELECT COALESCE(MAX(id),0) FROM users)) WHERE id=1')
     c.commit()

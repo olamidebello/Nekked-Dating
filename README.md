@@ -92,7 +92,7 @@ The supplied feature list is broader than this implementation. The app does not 
 
 The GUI states when provider-dependent features are not configured. It does not show fake purchases, verified badges, phone checks or connected accounts. Authentication currently means email/password only; email ownership is not verified. Operator privacy/support details, rate limits on authentication, account recovery, robust media processing, and operational monitoring must be completed before unrestricted public launch.
 
-Copyright 2026 Olamide Olatayo Bello. All rights reserved.
+Nekked Dating is owned and operated by NEKKED DATING CORPORATIONS. Copyright 2026 NEKKED DATING CORPORATIONS. All rights reserved.
 
 ## Super-admin console, marketplace and mobile download hub
 
