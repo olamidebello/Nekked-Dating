@@ -47,12 +47,25 @@ def person(c,uid):
     row=c.execute('SELECT id,profile FROM users WHERE id=?',(uid,)).fetchone()
     return row, json.loads(row['profile']) if row and row['profile'] else None
 
-def candidate(c,a,p,b,q):
-    return bool(not c.execute('SELECT 1 FROM account_controls WHERE user_id IN (?,?) AND suspended=1',(a,b)).fetchone() and a!=b and p and q and p.get('discoverable') and q.get('discoverable') and eligible(p,q) and not settings(c,a)['paused'] and not settings(c,b)['paused'] and not blocked(c,a,b) and not connection(c,a,b))
+def preference_allowed(c,p,q):
+    conf=commerce.config(c)
+    def terms(value):return {x.strip().casefold() for x in value.split(',') if x.strip()}
+    if not conf['min_profile_photos']<=len(p.get('photos',[]))<=conf['max_profile_photos']:return False
+    if conf['allow_match_percentage']:
+        from matching import SORT_METHODS
+        score=compatibility(p,q).get(SORT_METHODS.get(p.get('preferred_match','overall'),'score'))
+        low,high=p.get('match_min_percent',0),p.get('match_max_percent',100)
+        if (low>0 or high<100) and (score is None or not low<=score<=high):return False
+    if conf['allow_match_location'] and terms(p.get('desired_locations','')) and q.get('current_location','').strip().casefold() not in terms(p['desired_locations']):return False
+    if conf['allow_preferred_languages'] and terms(p.get('preferred_languages','')) and not terms(p['preferred_languages']) & terms(q.get('languages','')):return False
+    return True
 
-def teaser(c,row,p):
+def candidate(c,a,p,b,q):
+    return bool(not c.execute('SELECT 1 FROM account_controls WHERE user_id IN (?,?) AND suspended=1',(a,b)).fetchone() and a!=b and p and q and p.get('discoverable') and q.get('discoverable') and eligible(p,q) and preference_allowed(c,p,q) and preference_allowed(c,q,p) and not settings(c,a)['paused'] and not settings(c,b)['paused'] and not blocked(c,a,b) and not connection(c,a,b))
+
+def teaser(c,row,p,matched=False):
     visible=set(p.get('visible_details',VISIBLE))
-    data={'id':row['id'],'name':p['first_name'],'age':age(p),'bio':p['bio'],'photos':p.get('photos',[]),'prompts':p.get('public_prompts',[]),'details':{k:p[k] for k in VISIBLE if k in visible and p.get(k)}}
+    data={'id':row['id'],'name':p['first_name'],'age':age(p),'bio':p['bio'],'photos':p.get('photos',[]) if matched else p.get('photos',[])[:1],'prompts':p.get('public_prompts',[]),'details':{k:p[k] for k in VISIBLE if k in visible and p.get(k)}}
     thought=c.execute('SELECT text,created FROM thoughts WHERE user_id=? AND created>?',(row['id'],time.time()-604800)).fetchone()
     if thought: data['thought']=thought['text']
     data['poll']=p.get('poll')
@@ -102,7 +115,7 @@ def dispatch(method,path,data,c,u,p):
     if method=='GET':
         if path=='/api/preview':
             if not p: return 400,{'error':'Save your profile first.'}
-            return 200,{'profile':teaser(c,{'id':uid},p)}
+            return 200,{'profile':teaser(c,{'id':uid},p,matched=True)}
         if path=='/api/capabilities': return 200,{'messaging':True,'likes':True,'translation':'local','payments':any(x['enabled'] and x['ready'] for x in commerce.gateway_list(c)),'sms_verification':False,'social_login':False,'selfie_verification':False,'voice_video':True}
         if path=='/api/settings': return 200,{'settings':settings(c,uid),'admin':is_admin(c,u)}
         if path in ('/api/discover','/api/standouts'):
@@ -200,7 +213,7 @@ def dispatch(method,path,data,c,u,p):
         if not candidate(c,uid,p,oid,q): return 404,{'error':'This profile is not available for a new connection.'}
         kind=data.get('kind','profile'); target=text(data,'target',100); comment=text(data,'comment',500); strength=data.get('strength','like')
         if kind not in ('profile','photo','prompt') or strength not in ('like','rose'): raise ValueError('Invalid interest.')
-        if kind=='photo' and target not in q.get('photos',[]): raise ValueError('Unknown photo.')
+        if kind=='photo' and target not in q.get('photos',[])[:1]: raise ValueError('Unknown photo.')
         if kind=='prompt' and (not target.isdigit() or int(target)>=len(q.get('public_prompts',[]))): raise ValueError('Unknown prompt.')
         if c.execute("SELECT 1 FROM interests WHERE sender=? AND recipient=? AND status='pending'",(uid,oid)).fetchone(): return 409,{'error':'Your interest is already waiting for a reply.'}
         if settings(c,oid)['comment_filter'] and any(word in comment.lower().split() for word in ['fuck','shit','bitch']): return 400,{'error':'Please rephrase your comment respectfully.'}

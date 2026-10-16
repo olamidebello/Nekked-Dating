@@ -20,7 +20,7 @@ CREATE TABLE IF NOT EXISTS refund_requests(id INTEGER PRIMARY KEY,order_id TEXT 
 '''
 PROVIDERS={'stripe':['secret','webhook_secret'],'paypal':['client_id','secret','webhook_id'],'paystack':['secret'],'flutterwave':['secret','webhook_secret']}
 CATALOG=['stripe','paypal','paystack','flutterwave','square','adyen','razorpay','mollie','authorize_net','braintree','checkout_com','payoneer','worldpay','klarna','amazon_pay','apple_pay','google_pay','bank_transfer','crypto']
-DEFAULTS={'registration_open':True,'maintenance':False,'support_email':'','copyright':'Nekked Dating is owned and operated by NEKKED DATING CORPORATIONS. Copyright 2026 NEKKED DATING CORPORATIONS. All rights reserved.','android_url':'','ios_url':'','marketplace_open':False}
+DEFAULTS={'min_profile_photos':0,'max_profile_photos':6,'allow_match_percentage':True,'allow_match_location':True,'allow_preferred_languages':True,'registration_open':True,'maintenance':False,'support_email':'','copyright':'Nekked Dating is owned and operated by NEKKED DATING CORPORATIONS. Copyright 2026 NEKKED DATING CORPORATIONS. All rights reserved.','android_url':'','ios_url':'','marketplace_open':False}
 
 def initialize(c,key_path):
     global KEY_PATH
@@ -162,8 +162,12 @@ def dispatch(method,path,data,c,u,verify_password):
     if path=='/api/super/settings':
         allowed=set(DEFAULTS)
         if any(k not in allowed for k in data):raise ValueError('Unknown setting.')
+        proposed=config(c)|data
+        if any(type(proposed[k]) is not int or not 0<=proposed[k]<=12 for k in ('min_profile_photos','max_profile_photos')) or proposed['max_profile_photos']<1 or proposed['min_profile_photos']>proposed['max_profile_photos']:raise ValueError('Photo limits must satisfy 0 <= minimum <= maximum <= 12, with maximum at least 1.')
         for key,val in data.items():
-            if isinstance(DEFAULTS[key],bool):
+            if type(DEFAULTS[key]) is int:
+                if type(val) is not int:raise ValueError('Invalid numeric setting.')
+            elif isinstance(DEFAULTS[key],bool):
                 if type(val) is not bool:raise ValueError('Invalid toggle.')
             else:
                 if not isinstance(val,str) or len(val)>500:raise ValueError('Invalid text setting.')

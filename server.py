@@ -42,10 +42,19 @@ def validate(p):
     method=p.get('preferred_match','overall')
     if method not in SORT_METHODS: raise ValueError('Invalid matching preference.')
     extra['preferred_match']=method
+    for key,default in [('match_min_percent',0),('match_max_percent',100)]:
+        value=p.get(key,default)
+        if type(value) is not int or not 0<=value<=100:raise ValueError('Match percentages must be whole numbers from 0 to 100.')
+        extra[key]=value
+    if extra['match_min_percent']>extra['match_max_percent']:raise ValueError('Minimum match percentage cannot exceed maximum.')
+    for key in ('desired_locations','preferred_languages'):
+        value=p.get(key,'')
+        if not isinstance(value,str) or len(value)>500:raise ValueError('Invalid matching preference.')
+        extra[key]=value.strip()
     allowed={'gender':('woman','man','nonbinary','self-described'),'seeking':('woman','man','nonbinary','any'),'relationship_goal':('long-term','marriage','dating','friendship','open-to-exploring'),'children':('','prefer-not-to-say','want-children','have-children','do-not-want','open'),'smoking':('','prefer-not-to-say','non-smoker','smoker','open')}
     for k,choices in allowed.items():
         v=p.get(k,'')
-        if v not in choices and not (v=='' and k not in p): raise ValueError('Invalid '+k)
+        if v not in choices and v!='': raise ValueError('Invalid '+k)
         extra[k]=v
     for k,limit in [('birth_name',200),('current_location',200),('interests',500)]:
         v=p.get(k,'')
@@ -80,7 +89,7 @@ def validate(p):
         if not isinstance(poll,dict) or not isinstance(poll.get('question'),str) or not 1<=len(poll['question'])<=200 or not isinstance(poll.get('options'),list) or len(poll['options'])!=3 or any(not isinstance(x,str) or not 1<=len(x.strip())<=100 for x in poll['options']): raise ValueError('Provide a poll question and three choices.')
     extra['poll']=poll
     photos=p.get('photos',[])
-    if not isinstance(photos,list) or len(photos)>6 or any(not isinstance(x,str) or len(x)>64 for x in photos) or len(set(photos))!=len(photos): raise ValueError('Invalid photos.')
+    if not isinstance(photos,list) or len(photos)>12 or any(not isinstance(x,str) or len(x)>64 for x in photos) or len(set(photos))!=len(photos): raise ValueError('Invalid photos.')
     extra['photos']=photos
     return extra | {k:p[k] for k in ['first_name','last_name','birth_date','birth_location','bio','discoverable','preferences','answers']} | {'birth_time':p.get('birth_time','')}
 
@@ -180,14 +189,14 @@ class Handler(BaseHTTPRequestHandler):
                     if photo['user_id']!=u['id']:
                         owner=c.execute('SELECT profile FROM users WHERE id=?',(photo['user_id'],)).fetchone()
                         other=json.loads(owner['profile']) if owner and owner['profile'] else None
-                        if (not social.match_allowed(c,u['id'],photo['user_id']) and not social.candidate(c,u['id'],p,photo['user_id'],other)) or photo['id'] not in other.get('photos',[]): return self.reply(404,{'error':'Not found.'})
+                        if (not social.match_allowed(c,u['id'],photo['user_id']) and not social.candidate(c,u['id'],p,photo['user_id'],other)) or photo['id'] not in (other.get('photos',[]) if social.match_allowed(c,u['id'],photo['user_id']) else other.get('photos',[])[:1]): return self.reply(404,{'error':'Not found.'})
                     self.send_response(200); self.send_header('Content-Type','image/jpeg'); self.send_header('Cache-Control','no-store'); self.send_header('X-Content-Type-Options','nosniff'); self.end_headers(); self.wfile.write(photo['data']); return
                 if self.path=='/api/matches':
                     if not p: return self.reply(400,{'error':'Save your profile first.'})
                     matches=[]
                     for row in c.execute('SELECT id,profile FROM users WHERE id!=? AND profile IS NOT NULL',(u['id'],)):
                         other=json.loads(row['profile'])
-                        if social.match_allowed(c,u['id'],row['id']): matches.append({'id':row['id'],'connection_id':social.connection(c,u['id'],row['id'])['id'],'public_profile':social.teaser(c,row,other),'name':other['first_name'],'bio':other['bio'],'profile_details':{'age':age(other),**{k:other.get(k,'') for k in ['race','religion','languages'] if k in other.get('visible_details',social.VISIBLE)}},'photos':other.get('photos',[]),'overview':overview(other),'compatibility':compatibility(p,other)})
+                        if social.match_allowed(c,u['id'],row['id']): matches.append({'id':row['id'],'connection_id':social.connection(c,u['id'],row['id'])['id'],'public_profile':social.teaser(c,row,other,matched=True),'name':other['first_name'],'bio':other['bio'],'profile_details':{'age':age(other),**{k:other.get(k,'') for k in ['race','religion','languages'] if k in other.get('visible_details',social.VISIBLE)}},'photos':other.get('photos',[]),'overview':overview(other),'compatibility':compatibility(p,other)})
                     method=p.get('preferred_match','overall'); key=SORT_METHODS.get(method,'score')
                     return self.reply(200,{'preferred_match':method,'matches':sorted(matches,key=lambda m: (m['compatibility'].get(key) if m['compatibility'].get(key) is not None else -1,m['compatibility']['score'],-m['id']),reverse=True)})
                 return self.reply(404,{'error':'Not found.'})
@@ -280,7 +289,7 @@ class Handler(BaseHTTPRequestHandler):
                     except RuntimeError as error: return self.reply(503,{'error':str(error)})
                     return self.reply(200,result)
                 if self.path=='/api/photos':
-                    if c.execute('SELECT COUNT(*) FROM photos WHERE user_id=?',(u['id'],)).fetchone()[0]>=6: raise ValueError('Six photos maximum.')
+                    if c.execute('SELECT COUNT(*) FROM photos WHERE user_id=?',(u['id'],)).fetchone()[0]>=commerce.config(c)['max_profile_photos']: raise ValueError('The platform photo limit has been reached.')
                     image=base64.b64decode(data['image'],validate=True)
                     validate_jpeg(image)
                     ident=secrets.token_hex(16); c.execute('INSERT INTO photos VALUES(?,?,?)',(ident,u['id'],image))
@@ -293,6 +302,8 @@ class Handler(BaseHTTPRequestHandler):
                 if self.path=='/api/profile':
                     p=validate(data)
                     owned={r[0] for r in c.execute('SELECT id FROM photos WHERE user_id=?',(u['id'],))}
+                    limits=commerce.config(c)
+                    if len(p['photos'])>limits['max_profile_photos'] or (p['discoverable'] and len(p['photos'])<limits['min_profile_photos']):raise ValueError('Discovery requires between '+str(limits['min_profile_photos'])+' and '+str(limits['max_profile_photos'])+' photos.')
                     if not set(p['photos'])<=owned: raise ValueError('Invalid photo ownership.')
                     owned_media={r[0] for r in c.execute('SELECT id FROM media WHERE user_id=?',(u['id'],))}
                     if not set(p['public_media'])<=owned_media: raise ValueError('Invalid media ownership.')

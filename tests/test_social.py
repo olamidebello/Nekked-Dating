@@ -18,6 +18,38 @@ class SocialTests(unittest.TestCase):
             p=profile();p.update(first_name=f'Member{i}',public_prompts=[{'question':'Ask me about…','answer':'Travel and books'}],visible_details=['languages'],languages='English',religion='Private belief')
             self.assertEqual(self.call(c,'profile',p)[0],200);result.append((c,self.call(c,'me')[1]['id']))
         return result
+    def test_mutual_percentage_location_language_filters(self):
+        (a,aid),(b,bid)=self.accounts()
+        p=self.call(a,'me')[1]['profile'];p.update(match_min_percent=100,match_max_percent=100)
+        self.assertEqual(self.call(a,'profile',p)[0],200)
+        self.assertEqual(self.call(b,'discover')[1]['profiles'],[])
+        self.assertEqual(self.call(b,'likes',{'recipient':aid})[0],404)
+        p.update(match_min_percent=0,desired_locations='Lagos',preferred_languages='Yoruba')
+        self.call(a,'profile',p)
+        q=self.call(b,'me')[1]['profile'];q.update(current_location='Lagos',languages='English, Yoruba')
+        self.call(b,'profile',q)
+        self.assertEqual(len(self.call(a,'discover')[1]['profiles']),1)
+        self.call(b,'likes',{'recipient':aid})
+        p['desired_locations']='Dallas';self.call(a,'profile',p)
+        with server.connect() as c:interest=c.execute('SELECT id FROM interests WHERE recipient=?',(aid,)).fetchone()[0]
+        self.assertEqual(self.call(a,f'likes/{interest}/accept',{})[0],404)
+        p.update(match_min_percent=101);self.assertEqual(self.call(a,'profile',p)[0],400)
+
+    def test_gallery_only_after_mutual_match(self):
+        (a,aid),(b,bid)=self.accounts()
+        p=self.call(b,'me')[1]['profile'];p['photos']=['primary-test','gallery-test']
+        with server.connect() as c:
+            c.executemany('INSERT INTO photos VALUES(?,?,?)',[(x,bid,b'test-image') for x in p['photos']])
+        self.assertEqual(self.call(b,'profile',p)[0],200)
+        self.assertEqual(self.call(a,'discover')[1]['profiles'][0]['photos'],['primary-test'])
+        self.assertEqual(self.call(a,'photos/gallery-test')[0],404)
+        self.assertEqual(self.call(a,'likes',{'recipient':bid,'kind':'photo','target':'gallery-test'})[0],400)
+        self.call(a,'likes',{'recipient':bid});self.call(b,'likes',{'recipient':aid})
+        self.assertEqual(self.call(a,'matches')[1]['matches'][0]['public_profile']['photos'],p['photos'])
+        cid=self.call(a,'matches')[1]['matches'][0]['connection_id']
+        self.call(a,f'conversations/{cid}/unmatch',{})
+        self.assertEqual(self.call(a,'photos/gallery-test')[0],404)
+
     def test_explicit_matching_and_revocation(self):
         (a,aid),(b,bid)=self.accounts()
         suggestions=self.call(a,'discover')[1]['profiles']; self.assertEqual(len(suggestions),1)

@@ -14,6 +14,17 @@ class CommerceTests(unittest.TestCase):
         (a,aid),(b,bid)=self.accounts()
         with server.connect() as db:db.execute("INSERT INTO account_roles VALUES(?,'super_admin')",(aid,))
         return a,aid,b,bid
+    def test_photo_policy_and_preference_controls(self):
+        a,aid,b,bid=self.bootstrap()
+        self.assertEqual(self.call(b,'super/settings',{'max_profile_photos':2})[0],403)
+        self.assertEqual(self.call(a,'super/settings',{'min_profile_photos':3,'max_profile_photos':2})[0],400)
+        self.assertEqual(self.call(a,'super/settings',{'min_profile_photos':1,'max_profile_photos':2,'allow_match_percentage':False,'allow_match_location':False,'allow_preferred_languages':False})[0],200)
+        p=self.call(b,'me')[1]['profile']
+        self.assertEqual(self.call(b,'profile',p)[0],400)
+        p['discoverable']=False
+        self.assertEqual(self.call(b,'profile',p)[0],200)
+        self.assertFalse(self.call(b,'public/platform')[1]['allow_match_location'])
+
     def gateway(self,a,mode='test'):
         return self.call(a,'super/gateway',{'name':'stripe','enabled':True,'mode':mode,'password':'strong password 123','keys':{'secret':'merchant-test-secret','webhook_secret':'webhook-secret'}})
     def publish(self,a):
