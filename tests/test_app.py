@@ -109,6 +109,37 @@ class APITests(unittest.TestCase):
         ids=self.call(a,'me')[1]['uploaded_photos']; self.assertEqual(len(ids),6)
         self.call(a,'delete',{})
         with server.connect() as db: self.assertEqual(db.execute('SELECT COUNT(*) FROM photos WHERE id=?',(ids[0],)).fetchone()[0],0)
+    def test_symbol_pages_and_match_authorization(self):
+        a,b=self.client(),self.client()
+        for c,email in [(a,'symbols-a@example.com'),(b,'symbols-b@example.com')]:
+            self.call(c,'register',dict(email=email,password='strong password 123',adult=True))
+            self.call(c,'profile',profile())
+        with a.open(self.url+'/symbols/me/life_path') as r: self.assertIn(b'/symbol.js',r.read())
+        self.assertEqual(self.call(self.client(),'symbols/me/life_path')[0],401)
+        own=self.call(a,'symbols/me/name_number')[1]['detail']
+        self.assertIn('B(2)',own['calculation'])
+        matches=self.call(a,'matches')[1]['matches']
+        ident=next(m['id'] for m in matches if m['name']=='Ada' and m['overview']['life_path']==11)
+        for kind in ['sun_sign','chinese_zodiac','life_path','name_number']:
+            code,result=self.call(a,f'symbols/{ident}/{kind}'); self.assertEqual(code,200)
+            d=result['detail']; self.assertIsNone(d['calculation'])
+            for field in ['personality','strengths','growth','relationships','method','matching','perspective']: self.assertTrue(d[field])
+            self.assertNotIn('Bello',json.dumps(result)); self.assertNotIn('1990-04-15',json.dumps(result))
+        # Identify the exact second account regardless of other test fixtures.
+        with server.connect() as db: ident=db.execute('SELECT id FROM users WHERE email=?',('symbols-b@example.com',)).fetchone()[0]
+        p=profile(); p['discoverable']=False; self.call(b,'profile',p)
+        self.assertEqual(self.call(a,f'symbols/{ident}/life_path')[0],404)
+        p['discoverable']=True; p['max_age']=18; self.call(b,'profile',p)
+        self.assertEqual(self.call(a,f'symbols/{ident}/life_path')[0],404)
+        self.assertEqual(self.call(a,'symbols/me/unknown')[0],404)
+    def test_every_symbol_has_personality_content(self):
+        from symbol_details import symbol_detail
+        for year in range(1980,1992):
+            for month in range(1,13):
+                p=profile(); p['birth_date']=f'{year}-{month:02d}-15'
+                for key in ['sun_sign','chinese_zodiac','life_path','name_number']:
+                    detail=symbol_detail(p,key)
+                    self.assertTrue(detail['personality']); self.assertIsNone(detail['calculation'])
     def test_static_and_no_path_traversal(self):
         c=self.client()
         with c.open(self.url+'/') as response: self.assertIn(b'Be yourself',response.read())

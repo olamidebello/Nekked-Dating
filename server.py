@@ -1,10 +1,11 @@
-import base64, struct
+import base64, struct, re
 import hashlib, hmac, json, os, secrets, sqlite3, time
 from datetime import date, datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from http.cookies import SimpleCookie
 from matching import overview, compatibility, eligible
+from symbol_details import symbol_detail
 DB = os.environ.get('NEKKED_DB','nekked.sqlite3')
 CATEGORIES = ['emotional','intimacy','financial','living','moods']
 def connect():
@@ -80,6 +81,16 @@ class Handler(BaseHTTPRequestHandler):
                 u=self.user(c)
                 if not u: return self.reply(401,{'error':'Please sign in.'})
                 p=json.loads(u['profile']) if u['profile'] else None
+                detail_route=re.fullmatch(r'/api/symbols/(me|[1-9][0-9]*)/(sun_sign|chinese_zodiac|life_path|name_number)',self.path)
+                if detail_route:
+                    subject,key=detail_route.groups()
+                    if subject=='me':
+                        if not p: return self.reply(400,{'error':'Save your profile first.'})
+                        return self.reply(200,{'subject':'Your profile','detail':symbol_detail(p,key,private=True)})
+                    row=c.execute('SELECT profile FROM users WHERE id=? AND id!=?',(int(subject),u['id'])).fetchone()
+                    other=json.loads(row['profile']) if row and row['profile'] else None
+                    if not p or not other or not p['discoverable'] or not other['discoverable'] or not eligible(p,other): return self.reply(404,{'error':'This match is no longer available.'})
+                    return self.reply(200,{'subject':other['first_name'],'detail':symbol_detail(other,key)})
                 if self.path=='/api/me': return self.reply(200,{'email':u['email'],'profile':p,'uploaded_photos':[r[0] for r in c.execute('SELECT id FROM photos WHERE user_id=?',(u['id'],))],'overview':overview(p, private=True) if p else None})
                 if self.path.startswith('/api/photos/'):
                     photo=c.execute('SELECT * FROM photos WHERE id=?',(self.path.rsplit('/',1)[-1],)).fetchone()
@@ -98,6 +109,8 @@ class Handler(BaseHTTPRequestHandler):
                     return self.reply(200,{'matches':sorted(matches,key=lambda m:m['compatibility']['score'],reverse=True)})
                 return self.reply(404,{'error':'Not found.'})
         files={'/':'index.html','/app.js':'app.js','/style.css':'style.css','/logo.png':'logo.png'}
+        if re.fullmatch(r'/symbols/(me|[1-9][0-9]*)/(sun_sign|chinese_zodiac|life_path|name_number)',self.path): files[self.path]='symbol.html'
+        files['/symbol.js']='symbol.js'
         if self.path not in files: return self.reply(404,{'error':'Not found.'})
         path=Path(__file__).parent/'static'/files[self.path]; self.send_response(200)
         self.send_header('Content-Type',{'html':'text/html; charset=utf-8','js':'text/javascript','css':'text/css','png':'image/png'}[path.suffix[1:]])

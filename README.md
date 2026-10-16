@@ -68,3 +68,9 @@ Members can upload up to six photos, choose the first as their profile picture, 
 Expandable symbol cards show traditional meanings for the member and each eligible match: approximate Western sun sign, Gregorian birth-year Chinese animal, life path and name number. Only the owner receives birth-date digit and name-letter arithmetic. Life path sums every date digit; both calculations preserve master numbers 11, 22 and 33 during reduction. These conventions vary by numerology tradition. Match responses never contain the birth date, full name, private reflections or calculation inputs.
 
 Each eligible match shows Love (mean emotional/intimacy alignment), Living (living alignment), Money (financial alignment), and Communication (a separate communication preference, falling back to the stored moods preference for older profiles). Equal preferences score 90 and different preferences 50. Expand each domain for its basis. These are rule-based preference alignment scores, not validated predictions. Existing overall symbolic scoring remains visible.
+
+## Dedicated symbol pages
+
+Every symbol tile is a full-card link to `/symbols/me/{kind}` or `/symbols/{match_id}/{kind}`. Supported kinds are sun_sign, chinese_zodiac, life_path and name_number. Pages explain the symbol's traditional personality themes, strengths, growth areas, relationship prompts, calculation method and exact role in matching. Symbols are presented as traditions for reflection, not causes or scientific determinations of personality.
+
+Details load from authenticated `/api/symbols/...` endpoints. Matched-profile requests recheck mutual discovery, age and gender eligibility on every visit, including direct links and refreshes. Only the owner receives the private calculation; matched members see public symbols and interpretations. Pages support direct navigation, refresh, browser Back, links to the other symbols and a return to My symbols or Discover.
