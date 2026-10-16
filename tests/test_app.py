@@ -31,6 +31,21 @@ class MatchingTests(unittest.TestCase):
         a,b=profile(),profile(); a['relationship_goal']=b['relationship_goal']='marriage'
         aligned=compatibility(a,b)['score']; b['relationship_goal']='friendship'
         self.assertLess(compatibility(a,b)['score'],aligned)
+    def test_private_number_breakdown_and_public_meanings(self):
+        p=profile(); public=overview(p); private=overview(p,private=True)
+        self.assertNotIn('breakdown',public)
+        self.assertIn('A(1)',private['breakdown']['name_number'])
+        self.assertIn('11',private['breakdown']['life_path'])
+        self.assertEqual(set(public['meanings']),{'sun_sign','chinese_zodiac','life_path','name_number'})
+    def test_four_domains_and_legacy_communication(self):
+        a,b=profile(),profile(); b['preferences']['communication']='independent'
+        result=compatibility(a,b)
+        self.assertEqual(set(result['domains']),{'Love','Living','Money','Communication'})
+        self.assertEqual(result['domains']['Communication']['score'],50)
+        self.assertEqual(result['domains']['Love']['score'],90)
+        a['preferences']['communication']='independent'
+        self.assertEqual(compatibility(a,b)['domains']['Communication']['score'],90)
+        self.assertIn('communication',server.validate(a)['preferences'])
     def test_underage_rejected(self):
         p=profile(); p['birth_date']=date.today().isoformat()
         with self.assertRaises(ValueError): server.validate(p)
@@ -64,6 +79,36 @@ class APITests(unittest.TestCase):
         self.call(b,'logout',{}); self.assertEqual(self.call(b,'me')[0],401)
         self.assertEqual(self.call(b,'login',{'email':'bea@example.com','password':'wrong password 123'})[0],401)
         self.assertEqual(self.call(b,'login',{'email':'bea@example.com','password':'strong password 123'})[0],200)
+    def test_photo_ownership_visibility_and_deletion(self):
+        # Bounded JPEG frame fixture tests storage/authorization; image decode is a browser responsibility.
+        import base64
+        image=bytes.fromhex('ffd8ffc00008080010001003ffd9')
+        encoded=base64.b64encode(image).decode()
+        a,b,outsider=self.client(),self.client(),self.client()
+        for c,email in [(a,'photos-a@example.com'),(b,'photos-b@example.com'),(outsider,'photos-c@example.com')]:
+            self.assertEqual(self.call(c,'register',dict(email=email,password='strong password 123',adult=True))[0],200)
+        self.assertEqual(self.call(a,'photos',{'image':'invalid'})[0],400)
+        code,r=self.call(a,'photos',{'image':encoded}); self.assertEqual(code,200); ident=r['id']
+        pa=profile(); pa['photos']=[ident]
+        self.assertEqual(self.call(a,'profile',pa)[0],200)
+        self.assertEqual(self.call(b,'profile',pa)[0],400)
+        self.call(b,'profile',profile())
+        with b.open(self.url+'/api/photos/'+ident) as response: self.assertEqual(response.read(),image)
+        with self.assertRaises(urllib.error.HTTPError): outsider.open(self.url+'/api/photos/'+ident)
+        with self.assertRaises(urllib.error.HTTPError): self.client().open(self.url+'/api/photos/'+ident)
+        public=self.call(b,'matches')[1]
+        self.assertNotIn('breakdown',json.dumps(public)); self.assertIn('domains',public['matches'][0]['compatibility'])
+        pa['discoverable']=False; self.call(a,'profile',pa)
+        with self.assertRaises(urllib.error.HTTPError): b.open(self.url+'/api/photos/'+ident)
+        self.assertEqual(self.call(b,'matches')[1]['matches'],[])
+        self.call(a,'photos/delete',{'id':ident})
+        with self.assertRaises(urllib.error.HTTPError): a.open(self.url+'/api/photos/'+ident)
+        self.assertEqual(self.call(a,'me')[1]['profile']['photos'],[])
+        for i in range(6): self.assertEqual(self.call(a,'photos',{'image':encoded})[0],200)
+        self.assertEqual(self.call(a,'photos',{'image':encoded})[0],400)
+        ids=self.call(a,'me')[1]['uploaded_photos']; self.assertEqual(len(ids),6)
+        self.call(a,'delete',{})
+        with server.connect() as db: self.assertEqual(db.execute('SELECT COUNT(*) FROM photos WHERE id=?',(ids[0],)).fetchone()[0],0)
     def test_static_and_no_path_traversal(self):
         c=self.client()
         with c.open(self.url+'/') as response: self.assertIn(b'Be yourself',response.read())
