@@ -48,11 +48,11 @@
       ansible.builtin.uri:
         url: 'http://127.0.0.1:18083/{{ item }}'
         status_code: 200
-      loop: [marketplace, download]
+      loop: [marketplace, download, dating]
     - name: Show real promotion outcome
       ansible.builtin.debug:
         msg:
           - '{{ elevation.stdout }}'
           - 'Super-admin console: /admin. Marketplace: /marketplace. Mobile installation: /download.'
-          - 'Plans start as drafts and checkout starts disabled. Configure merchant credentials and publish plans before opening sales.'
+          - 'Recommended membership plans are published. Configure merchant credentials and verify live checkout before accepting payments.'
           - 'Keep /var/lib/nekkeddating/.nekked-commerce.key with encrypted database backups.'

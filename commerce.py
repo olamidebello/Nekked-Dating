@@ -23,12 +23,16 @@ CREATE TABLE IF NOT EXISTS refund_requests(id INTEGER PRIMARY KEY,order_id TEXT 
 '''
 PROVIDERS={'stripe':['secret','webhook_secret'],'paypal':['client_id','secret','webhook_id'],'paystack':['secret'],'flutterwave':['secret','webhook_secret']}
 CATALOG=['stripe','paypal','paystack','flutterwave','square','adyen','razorpay','mollie','authorize_net','braintree','checkout_com','payoneer','worldpay','klarna','amazon_pay','apple_pay','google_pay','bank_transfer','crypto']
-DEFAULTS={'min_profile_photos':0,'max_profile_photos':6,'allow_match_percentage':True,'allow_match_location':True,'allow_preferred_languages':True,'registration_open':True,'maintenance':False,'support_email':'','copyright':'Nekked Dating is owned and operated by NEKKED DATING CORPORATIONS. Copyright 2026 NEKKED DATING CORPORATIONS. All rights reserved.','android_url':'','ios_url':'','marketplace_open':True}
+DEFAULTS={'dating_rooms_open':True,'min_profile_photos':0,'max_profile_photos':6,'allow_match_percentage':True,'allow_match_location':True,'allow_preferred_languages':True,'registration_open':True,'maintenance':False,'support_email':'','copyright':'Nekked Dating is owned and operated by NEKKED DATING CORPORATIONS. Copyright 2026 NEKKED DATING CORPORATIONS. All rights reserved.','android_url':'','ios_url':'','marketplace_open':True}
 
 def initialize(c,key_path):
     global KEY_PATH
     KEY_PATH=Path(key_path);c.executescript(SCHEMA)
-    plans=[('plus-month','Plus · 30 days',999,'USD',30,'plus',['Unlimited mutual matches','Unlimited Likes','Unlimited Undo','All incoming Likes']),('plus-year','Plus · 365 days',9999,'USD',365,'plus',['Unlimited mutual matches','Unlimited Likes','Unlimited Undo','All incoming Likes']),('premium-month','Premium · 30 days',1999,'USD',30,'premium',['Unlimited mutual matches','Plus benefits','Five additional Roses per term']),('premium-year','Premium · 365 days',19999,'USD',365,'premium',['Unlimited mutual matches','Plus benefits','Five additional Roses per term'])]
+    plans=[]
+    for tier,prices in [('plus',[999,2699,4999,9999]),('premium',[1999,5499,9999,19999])]:
+        features=['Unlimited mutual matches','Unlimited Likes','Unlimited Undo','All incoming Likes']+(['Five additional Roses per term'] if tier=='premium' else [])
+        for suffix,label,days,price in zip(['month','3-months','6-months','year'],['1 month (30 days)','3 months (90 days)','6 months (180 days)','1 year (365 days)'],[30,90,180,365],prices):
+            plans.append((tier+'-'+suffix,tier.title()+' · '+label,price,'USD',days,tier,features))
     c.executemany('INSERT OR IGNORE INTO plans VALUES(?,?,?,?,?,?,?,0)',[row[:6]+(json.dumps(row[6]),) for row in plans])
     c.execute("INSERT OR IGNORE INTO products VALUES('roses-5','Five Roses',499,'USD','roses',5,0)")
     for key,value in DEFAULTS.items():c.execute('INSERT OR IGNORE INTO platform_config VALUES(?,?)',(key,json.dumps(value)))
@@ -40,6 +44,10 @@ def initialize(c,key_path):
         c.execute("INSERT INTO platform_config VALUES('membership_catalog_v2','true')")
         for row in c.execute('SELECT low_id,high_id,created FROM connections').fetchall():
             c.executemany('INSERT OR IGNORE INTO monthly_match_events VALUES(?,?,?)',[(row[0],row[1],row[2]),(row[1],row[0],row[2])])
+    if not c.execute("SELECT 1 FROM platform_config WHERE key='membership_catalog_v3'").fetchone():
+        for item in plans:
+            c.execute('UPDATE plans SET name=?,features=?,published=1 WHERE id=? AND amount_minor=? AND days=? AND tier=?',(item[1],json.dumps(item[6]),item[0],item[2],item[4],item[5]))
+        c.execute("INSERT INTO platform_config VALUES('membership_catalog_v3','true')")
     c.execute('INSERT OR IGNORE INTO app_identity SELECT 1,COALESCE(MAX(id),0) FROM users')
     c.execute('UPDATE app_identity SET value=MAX(value,(SELECT COALESCE(MAX(id),0) FROM users)) WHERE id=1')
     c.commit()
@@ -85,7 +93,7 @@ def match_quota(c,uid):
     end=start.replace(year=start.year+1,month=1) if start.month==12 else start.replace(month=start.month+1)
     used=c.execute('SELECT COUNT(*) FROM monthly_match_events WHERE user_id=? AND created>=? AND created<?',(uid,start.timestamp(),end.timestamp())).fetchone()[0]
     paid=entitlements(c,uid)['tier']!='free'
-    return {'used':used,'limit':None if paid else 10,'remaining':None if paid else max(0,10-used),'resets_at':end.isoformat(),'timezone':'UTC'}
+    return {'used':used,'limit':None if paid else 20,'remaining':None if paid else max(0,20-used),'resets_at':end.isoformat(),'timezone':'UTC'}
 
 def verify_order(c,order):
     if not c.in_transaction:c.execute('BEGIN IMMEDIATE')
@@ -123,7 +131,7 @@ def dispatch(method,path,data,c,u,verify_password):
     uid=u['id'];is_super=superuser(c,uid)
     if path.startswith('/api/super/') and not is_super:return 403,{'error':'Super-admin access required.'}
     if method=='GET':
-        if path=='/api/marketplace':return 200,{'plans':[dict(r)|{'features':json.loads(r['features'])} for r in c.execute('SELECT * FROM plans WHERE published=1')],'products':[dict(r) for r in c.execute('SELECT * FROM products WHERE published=1')],'gateways':[r for r in gateway_list(c) if r['implemented'] and r['enabled'] and r['ready']],'open':config(c)['marketplace_open'],'entitlements':entitlements(c,uid),'match_quota':match_quota(c,uid),'free_plan':{'name':'Free','amount_minor':0,'currency':'USD','features':['Up to 10 new mutual matches per calendar month (UTC)','Message existing matches','Personal symbols and matched compatibility','8 Likes per rolling 24 hours']},'billing':'Prepaid fixed-term access; no automatic recurring charges.'}
+        if path=='/api/marketplace':return 200,{'plans':[dict(r)|{'features':json.loads(r['features'])} for r in c.execute('SELECT * FROM plans WHERE published=1')],'products':[dict(r) for r in c.execute('SELECT * FROM products WHERE published=1')],'gateways':[r for r in gateway_list(c) if r['implemented'] and r['enabled'] and r['ready']],'open':config(c)['marketplace_open'],'entitlements':entitlements(c,uid),'match_quota':match_quota(c,uid),'free_plan':{'name':'Free','amount_minor':0,'currency':'USD','features':['Up to 20 new mutual matches per calendar month (UTC)','Message existing matches','Personal symbols and matched compatibility','8 Likes per rolling 24 hours']},'billing':'Prepaid fixed-term access; no automatic recurring charges.'}
         if path=='/api/orders':return 200,{'orders':[dict(r) for r in c.execute('SELECT id,title,amount_minor,currency,gateway,mode,status,created,paid FROM orders WHERE user_id=? ORDER BY created DESC LIMIT 100',(uid,))]}
         if path=='/api/super/overview':
             counts={name:c.execute('SELECT COUNT(*) FROM '+name).fetchone()[0] for name in ['users','connections','messages','reports','support_requests','orders']}

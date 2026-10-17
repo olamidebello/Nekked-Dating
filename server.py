@@ -9,6 +9,7 @@ from symbol_details import symbol_detail
 from astrology_tools import match_report
 import translation
 import social
+import dating
 import commerce
 import gateways
 DB = os.environ.get('NEKKED_DB','nekked.sqlite3')
@@ -17,6 +18,7 @@ def connect():
     c=sqlite3.connect(DB,timeout=30); c.row_factory=sqlite3.Row
     c.executescript('CREATE TABLE IF NOT EXISTS users(id INTEGER PRIMARY KEY,email TEXT UNIQUE,password TEXT,profile TEXT); CREATE TABLE IF NOT EXISTS sessions(token TEXT PRIMARY KEY,user_id INTEGER,expires REAL); CREATE TABLE IF NOT EXISTS photos(id TEXT PRIMARY KEY,user_id INTEGER,data BLOB); CREATE TABLE IF NOT EXISTS onboarding(user_id INTEGER PRIMARY KEY,data TEXT);')
     c.executescript(social.SCHEMA)
+    c.executescript(dating.SCHEMA)
     if 'media_id' not in {r[1] for r in c.execute('PRAGMA table_info(messages)')}: c.execute("ALTER TABLE messages ADD COLUMN media_id TEXT DEFAULT ''")
     commerce.initialize(c,str(Path(DB).parent/'.nekked-commerce.key'))
     return c
@@ -149,6 +151,8 @@ class Handler(BaseHTTPRequestHandler):
                 if commerce.config(c)['maintenance'] and not commerce.superuser(c,u['id']) and self.path in ('/api/discover','/api/standouts','/api/likes','/api/matches'):return self.reply(503,{'error':'The platform is temporarily in maintenance mode.'})
                 handled=commerce.dispatch('GET',self.path,{},c,u,lambda _:False)
                 if handled is not None:return self.reply(*handled)
+                handled=dating.dispatch('GET',self.path,{},c,u,p)
+                if handled is not None:return self.reply(*handled)
                 handled=social.dispatch('GET',self.path,{},c,u,p)
                 if handled is not None: return self.reply(*handled)
                 if self.path.startswith('/api/media/'):
@@ -203,7 +207,7 @@ class Handler(BaseHTTPRequestHandler):
         files={'/take.js':'take.js','/':'index.html','/app.js':'app.js','/style.css':'style.css','/logo.png':'logo.png'}
         if re.fullmatch(r'/take/[A-Za-z0-9_-]{40,60}',self.path): files[self.path]='take.html'
         if re.fullmatch(r'/symbols/(me|[1-9][0-9]*)/(sun_sign|chinese_zodiac|life_path|name_number)',self.path): files[self.path]='symbol.html'
-        files.update({'/platform.js':'platform.js','/admin':'admin.html','/admin.js':'admin.js','/marketplace':'marketplace.html','/marketplace.js':'marketplace.js','/download':'download.html','/download.js':'download.js','/icon-192.png':'icon-192.png','/icon-512.png':'icon-512.png','/manifest.webmanifest':'manifest.webmanifest','/sw.js':'sw.js','/community':'community.html','/community.js':'community.js','/social.js':'social.js','/symbol.js':'symbol.js','/tools':'tools.html','/tools.js':'tools.js'})
+        files.update({'/dating':'dating.html','/dating.js':'dating.js','/platform.js':'platform.js','/admin':'admin.html','/admin.js':'admin.js','/marketplace':'marketplace.html','/marketplace.js':'marketplace.js','/download':'download.html','/download.js':'download.js','/icon-192.png':'icon-192.png','/icon-512.png':'icon-512.png','/manifest.webmanifest':'manifest.webmanifest','/sw.js':'sw.js','/community':'community.html','/community.js':'community.js','/social.js':'social.js','/symbol.js':'symbol.js','/tools':'tools.html','/tools.js':'tools.js'})
         if self.path not in files: return self.reply(404,{'error':'Not found.'})
         path=Path(__file__).parent/'static'/files[self.path]; self.send_response(200)
         self.send_header('Content-Type',{'html':'text/html; charset=utf-8','js':'text/javascript','css':'text/css','png':'image/png','webmanifest':'application/manifest+json'}[path.suffix[1:]])
@@ -256,6 +260,8 @@ class Handler(BaseHTTPRequestHandler):
                 handled=commerce.dispatch('POST',self.path,data,c,u,lambda password:hmac.compare_digest(password_hash(password,u['password'].split(':')[0]),u['password']))
                 if handled is not None:return self.reply(*handled)
                 c.execute('BEGIN IMMEDIATE')
+                handled=dating.dispatch('POST',self.path,data,c,u,p)
+                if handled is not None:return self.reply(*handled)
                 handled=social.dispatch('POST',self.path,data,c,u,p)
                 if handled is not None: return self.reply(*handled)
                 c.commit()

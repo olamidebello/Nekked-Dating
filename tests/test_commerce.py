@@ -29,18 +29,18 @@ class CommerceTests(unittest.TestCase):
         import social
         a,aid,b,bid=self.bootstrap()
         market=self.call(b,'marketplace')[1]
-        self.assertEqual(len(market['plans']),4)
+        self.assertEqual(len(market['plans']),8)
         self.assertTrue(market['open'])
-        self.assertEqual(market['match_quota']['remaining'],10)
+        self.assertEqual(market['match_quota']['remaining'],20)
         self.assertNotIn('membership_catalog_v2',self.call(a,'super/settings')[1])
         with server.connect() as c:
-            c.executemany('INSERT INTO monthly_match_events VALUES(?,?,?)',[(aid,1000+i,time.time()) for i in range(9)])
+            c.executemany('INSERT INTO monthly_match_events VALUES(?,?,?)',[(aid,1000+i,time.time()) for i in range(19)])
             p=json.loads(c.execute('SELECT profile FROM users WHERE id=?',(aid,)).fetchone()[0])
             q=json.loads(c.execute('SELECT profile FROM users WHERE id=?',(bid,)).fetchone()[0])
             self.assertEqual(social.accept(c,aid,bid,p,q)[0],200)
             self.assertEqual(commerce.match_quota(c,aid)['remaining'],0)
             self.assertEqual(social.accept(c,aid,bid,p,q)[0],200)
-            self.assertEqual(commerce.match_quota(c,aid)['used'],10)
+            self.assertEqual(commerce.match_quota(c,aid)['used'],20)
             c.execute('UPDATE connections SET active=0')
             self.assertEqual(social.accept(c,bid,aid,q,p)[0],409)
             self.assertEqual(commerce.match_quota(c,bid)['used'],1)
@@ -48,10 +48,10 @@ class CommerceTests(unittest.TestCase):
             self.assertEqual(social.accept(c,bid,aid,q,p)[0],200)
             self.assertIsNone(commerce.match_quota(c,aid)['limit'])
             c.execute('UPDATE connections SET active=0')
-            c.executemany('INSERT INTO monthly_match_events VALUES(?,?,?)',[(bid,2000+i,time.time()) for i in range(8)])
+            c.executemany('INSERT INTO monthly_match_events VALUES(?,?,?)',[(bid,2000+i,time.time()) for i in range(18)])
             self.assertEqual(social.accept(c,aid,bid,p,q)[0],409)
             c.execute('UPDATE monthly_match_events SET created=-rowid WHERE user_id=?',(bid,))
-            self.assertEqual(commerce.match_quota(c,bid)['remaining'],10)
+            self.assertEqual(commerce.match_quota(c,bid)['remaining'],20)
 
     def gateway(self,a,mode='test'):
         return self.call(a,'super/gateway',{'name':'stripe','enabled':True,'mode':mode,'password':'strong password 123','keys':{'secret':'merchant-test-secret','webhook_secret':'webhook-secret'}})

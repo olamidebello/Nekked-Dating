@@ -290,7 +290,7 @@ def accept(c,a,b,p,q,opening=''):
     for uid in (a,b):
         quota=commerce.match_quota(c,uid)
         if quota['remaining']==0:
-            return 409,{'error':'Your free plan has reached 10 new matches this month. Visit Marketplace to upgrade or wait until next month.' if uid==a else 'This member has reached their monthly match limit. This interest can be accepted after their limit resets or they upgrade.','code':'monthly_match_limit','upgrade_url':'/marketplace','resets_at':quota['resets_at']}
+            return 409,{'error':'Your free plan has reached 20 new matches this month. Visit Marketplace to upgrade or wait until next month.' if uid==a else 'This member has reached their monthly match limit. This interest can be accepted after their limit resets or they upgrade.','code':'monthly_match_limit','upgrade_url':'/marketplace','resets_at':quota['resets_at']}
     low,high=sorted([a,b]); now=time.time()
     c.executemany('INSERT INTO monthly_match_events VALUES(?,?,?)',[(a,b,now),(b,a,now)])
     c.execute('INSERT INTO connections(low_id,high_id,created) VALUES(?,?,?) ON CONFLICT(low_id,high_id) DO UPDATE SET active=1,created=excluded.created',(low,high,now))
@@ -301,6 +301,9 @@ def accept(c,a,b,p,q,opening=''):
     return 200,{'ok':True,'matched':True,'connection_id':row['id']}
 
 def delete_user(c,uid):
+    c.execute('DELETE FROM dating_room_members WHERE user_id=?',(uid,))
+    c.execute('DELETE FROM dating_room_messages WHERE sender=?',(uid,))
+    c.execute('DELETE FROM meetup_proposals WHERE creator=?',(uid,))
     c.execute('DELETE FROM monthly_match_events WHERE user_id=?',(uid,))
     c.execute('DELETE FROM entitlements WHERE user_id=?',(uid,))
     c.execute('DELETE FROM account_controls WHERE user_id=?',(uid,))

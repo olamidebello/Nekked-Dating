@@ -50,6 +50,41 @@ class SocialTests(unittest.TestCase):
         self.call(a,f'conversations/{cid}/unmatch',{})
         self.assertEqual(self.call(a,'photos/gallery-test')[0],404)
 
+    def test_dating_rooms_consent_safety_and_moderation(self):
+        (a,aid),(b,bid),(outsider,oid)=self.accounts(3)
+        route='dating/rooms/dating/'
+        self.assertEqual(self.call(a,route+'messages')[0],403)
+        self.assertEqual(self.call(a,route+'join',{})[0],400)
+        for client in (a,b):self.assertEqual(self.call(client,route+'join',{'consent':True})[0],200)
+        self.assertEqual(self.call(a,route+'messages',{'text':'Coffee meetup ideas?'})[0],200)
+        msg=self.call(b,route+'messages')[1]['messages'][0]
+        self.assertNotIn('photos',msg);self.assertNotIn('compatibility',msg)
+        self.assertEqual(self.call(outsider,route+'messages')[0],403)
+        self.assertEqual(self.call(b,route+'delete',{'message_id':msg['id']})[0],403)
+        self.assertEqual(self.call(b,route+'report',{'message_id':msg['id'],'reason':'Review this'})[0],200)
+        self.call(b,'block',{'recipient':aid})
+        self.assertEqual(self.call(b,route+'messages')[1]['messages'],[])
+        self.assertEqual(self.call(a,route+'delete',{'message_id':msg['id']})[0],200)
+        self.call(a,route+'leave',{})
+        self.assertEqual(self.call(a,route+'messages')[0],403)
+
+    def test_meetup_requires_match_and_invitee_consent(self):
+        from datetime import datetime,timezone,timedelta
+        (a,aid),(b,bid),(outsider,oid)=self.accounts(3)
+        proposal={'connection_id':999,'place':'Public café','location':'Dallas','scheduled':(datetime.now(timezone.utc)+timedelta(days=1)).isoformat(),'note':'Daytime, budget $20'}
+        self.assertEqual(self.call(a,'dating/meetups',proposal)[0],404)
+        self.call(a,'likes',{'recipient':bid});cid=self.call(b,'likes',{'recipient':aid})[1]['connection_id']
+        proposal['connection_id']=cid
+        self.assertEqual(self.call(a,'dating/meetups',proposal)[0],200)
+        meetup=self.call(b,'dating/meetups')[1]['proposals'][0]['id']
+        self.assertEqual(self.call(a,f'dating/meetups/{meetup}/accept',{})[0],403)
+        self.assertEqual(self.call(outsider,f'dating/meetups/{meetup}/accept',{})[0],404)
+        self.assertEqual(self.call(b,f'dating/meetups/{meetup}/accept',{})[0],200)
+        self.assertEqual(self.call(b,f'dating/meetups/{meetup}/decline',{})[0],409)
+        self.call(a,f'conversations/{cid}/unmatch',{})
+        self.assertEqual(self.call(b,'dating/meetups')[1]['proposals'],[])
+        self.assertEqual(self.call(b,f'dating/meetups/{meetup}/accept',{})[0],404)
+
     def test_explicit_matching_and_revocation(self):
         (a,aid),(b,bid)=self.accounts()
         suggestions=self.call(a,'discover')[1]['profiles']; self.assertEqual(len(suggestions),1)
