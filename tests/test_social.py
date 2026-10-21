@@ -18,6 +18,20 @@ class SocialTests(unittest.TestCase):
             p=profile();p.update(first_name=f'Member{i}',public_prompts=[{'question':'Ask me about…','answer':'Travel and books'}],visible_details=['languages'],languages='English',religion='Private belief')
             self.assertEqual(self.call(c,'profile',p)[0],200);result.append((c,self.call(c,'me')[1]['id']))
         return result
+    def test_password_change_revokes_all_sessions(self):
+        (a,aid),(b,bid)=self.accounts()
+        second=self.client()
+        self.assertEqual(self.call(second,'login',{'email':'social0@example.com','password':'strong password 123'})[0],200)
+        endpoint='account/password'
+        self.assertEqual(self.call(a,endpoint,{'current_password':'wrong','new_password':'replacement password 123'})[0],403)
+        self.assertEqual(self.call(a,endpoint,{'current_password':'strong password 123','new_password':'short'})[0],400)
+        self.assertEqual(self.call(a,endpoint,{'current_password':'strong password 123','new_password':'replacement password 123'})[0],200)
+        self.assertEqual(self.call(a,'me')[0],401)
+        self.assertEqual(self.call(second,'me')[0],401)
+        self.assertEqual(self.call(b,'me')[0],200)
+        self.assertEqual(self.call(second,'login',{'email':'social0@example.com','password':'strong password 123'})[0],401)
+        self.assertEqual(self.call(second,'login',{'email':'social0@example.com','password':'replacement password 123'})[0],200)
+
     def test_mutual_percentage_location_language_filters(self):
         (a,aid),(b,bid)=self.accounts()
         p=self.call(a,'me')[1]['profile'];p.update(match_min_percent=100,match_max_percent=100)

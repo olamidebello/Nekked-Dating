@@ -1,0 +1,49 @@
+---
+# Deploys the implemented Nekked Dating feature set; does not claim Hinge parity.
+- name: Deploy tested dating application and management console
+  ansible.builtin.import_playbook: install-super-admin-marketplace.yml
+
+- name: Verify dating surfaces and authorization boundaries
+  hosts: all
+  become: true
+  gather_facts: false
+  vars:
+    nekked_verify_base: http://127.0.0.1:18083
+  tasks:
+    - name: Verify member and operator frontend resources one by one
+      ansible.builtin.uri:
+        url: '{{ nekked_verify_base }}{{ item }}'
+        status_code: 200
+        return_content: false
+      loop:
+        - /
+        - /social.js
+        - /dating
+        - /dating.js
+        - /marketplace
+        - /marketplace.js
+        - /admin
+        - /admin.js
+        - /download
+        - /manifest.webmanifest
+        - /sw.js
+        - /community
+    - name: Verify anonymous requests cannot read private resources
+      ansible.builtin.uri:
+        url: '{{ nekked_verify_base }}/api/{{ item }}'
+        status_code: 401
+      loop: [me, discover, standouts, likes, conversations, settings, super/overview]
+    - name: Verify password changes require authentication
+      ansible.builtin.uri:
+        url: '{{ nekked_verify_base }}/api/account/password'
+        method: POST
+        body_format: json
+        body: {}
+        status_code: 401
+    - name: Report exact scope and remaining dependencies
+      ansible.builtin.debug:
+        msg:
+          - 'Frontend, API, authorization and database behavior are tested by the imported release installer before activation.'
+          - 'Feature-by-feature implementation limits: docs/dating-feature-matrix.md in the deployed checkout.'
+          - 'Mobile is presently an installable website. This playbook does not build native Android/iOS binaries.'
+          - 'Configure real merchant accounts in /admin. Native push, identity verification, SMS and recurring billing remain unavailable.'

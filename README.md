@@ -133,3 +133,8 @@ Discover supports swipe right to Like and left to Skip (90-pixel horizontal gest
 The `/dating` page provides opt-in Introductions, Dating conversations and Meetup ideas rooms. Members consent before reading/posting, share only first name and message content, may leave/delete their own messages, report messages or block senders. Moderators can join and remove messages; Super Admin Settings can close rooms. Messages poll every 10 seconds, have a 1,000-character limit and are limited to ten per minute. No room activity creates a match or unlocks gallery/compatibility.
 
 Matched members can propose a venue, address, future date/time and notes. Only the invited active match can accept/decline; the author can cancel. Blocking/unmatching revokes proposal access. Generic public-place ideas are provided; there is no verified local directory, map provider, restaurant booking or recommendation service. Users confirm actual hours, accessibility, prices and reservations themselves.
+
+
+### Feature deployment entrypoint
+
+Run `sudo ansible-playbook -i localhost, -c local ansible/install-dating-features.yml` from an updated checkout. See [the feature-by-feature matrix](docs/dating-feature-matrix.md) for implemented behavior and outstanding native/provider integrations. Settings now includes a current-password-verified password change that revokes all sessions. This installer does not claim complete Hinge parity.

@@ -255,6 +255,21 @@ class Handler(BaseHTTPRequestHandler):
                     return self.reply(200,{'ok':True})
                 u=self.user(c)
                 if not u: return self.reply(401,{'error':'Please sign in.'})
+                if self.path=='/api/account/password':
+                    old=data.get('current_password'); new=data.get('new_password')
+                    if not isinstance(old,str) or not isinstance(new,str) or not 12<=len(new)<=128 or len(old)>128:
+                        raise ValueError('Use a new password of 12–128 characters.')
+                    c.execute('BEGIN IMMEDIATE')
+                    if not social.allowance(c,u['id'],'password_change',5,900):
+                        return self.reply(429,{'error':'Please wait before trying again.'})
+                    if not hmac.compare_digest(password_hash(old,u['password'].split(':')[0]),u['password']):
+                        return self.reply(403,{'error':'Current password is incorrect.'})
+                    if old==new: raise ValueError('Choose a different password.')
+                    c.execute('UPDATE users SET password=? WHERE id=?',(password_hash(new),u['id']))
+                    c.execute('DELETE FROM sessions WHERE user_id=?',(u['id'],))
+                    secure='; Secure' if os.environ.get('NEKKED_SECURE_COOKIE')=='1' else ''
+                    self.cookies=['session=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0'+secure]
+                    return self.reply(200,{'ok':True,'sign_in_required':True})
                 p=json.loads(u['profile']) if u['profile'] else None
                 if commerce.config(c)['maintenance'] and not commerce.superuser(c,u['id']) and (self.path=='/api/likes' or self.path.startswith('/api/conversations/')):return self.reply(503,{'error':'The platform is temporarily in maintenance mode.'})
                 handled=commerce.dispatch('POST',self.path,data,c,u,lambda password:hmac.compare_digest(password_hash(password,u['password'].split(':')[0]),u['password']))
