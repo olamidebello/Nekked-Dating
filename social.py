@@ -23,6 +23,7 @@ CREATE TABLE IF NOT EXISTS account_settings(user_id INTEGER PRIMARY KEY,data TEX
 CREATE TABLE IF NOT EXISTS connection_settings(user_id INTEGER,connection_id INTEGER,hidden INTEGER DEFAULT 0,note TEXT DEFAULT '',feedback TEXT DEFAULT '',PRIMARY KEY(user_id,connection_id));
 CREATE TABLE IF NOT EXISTS action_log(user_id INTEGER,action TEXT,created REAL);
 CREATE TABLE IF NOT EXISTS notices(id INTEGER PRIMARY KEY,user_id INTEGER,text TEXT,seen INTEGER DEFAULT 0,created REAL);
+CREATE INDEX IF NOT EXISTS notices_unread ON notices(user_id,seen,id);
 CREATE TABLE IF NOT EXISTS support_requests(id INTEGER PRIMARY KEY,user_id INTEGER,subject TEXT,detail TEXT,status TEXT DEFAULT 'open',created REAL);
 CREATE TABLE IF NOT EXISTS success_stories(id INTEGER PRIMARY KEY,user_id INTEGER,story TEXT,status TEXT DEFAULT 'pending',created REAL);
 CREATE TABLE IF NOT EXISTS activity(user_id INTEGER PRIMARY KEY,last_active REAL);
@@ -75,6 +76,14 @@ def teaser(c,row,p,matched=False):
     if st['show_active'] and activity:
         elapsed=time.time()-activity[0]; data['activity']='Active now' if elapsed<300 else 'Active today' if elapsed<86400 else None
     return data
+
+NOTICE_KINDS={'likes':('Someone liked your profile.','Someone sent you a Rose.'),'messages':('You have a new message.',),'matches':('You have a new match.',)}
+def notification_summary(c,uid):
+    counts={key:0 for key in NOTICE_KINDS}
+    for row in c.execute('SELECT text,COUNT(*) AS total FROM notices WHERE user_id=? AND seen=0 GROUP BY text',(uid,)):
+        for key,texts in NOTICE_KINDS.items():
+            if row['text'] in texts:counts[key]+=row['total']
+    return {'counts':counts,'through_id':c.execute('SELECT COALESCE(MAX(id),0) FROM notices WHERE user_id=?',(uid,)).fetchone()[0]}
 
 def notify(c,uid,text):
     if settings(c,uid)['notifications']: c.execute('INSERT INTO notices(user_id,text,created) VALUES(?,?,?)',(uid,text,time.time()))
@@ -159,6 +168,7 @@ def dispatch(method,path,data,c,u,p):
             return 200,{'profiles':out}
         if path=='/api/friend-takes': return 200,{'takes':[dict(r) for r in c.execute('SELECT id,contributor,text,status FROM friend_takes WHERE user_id=? ORDER BY id DESC',(uid,))]}
         if path=='/api/my-media': return 200,{'media':[{'id':r['id'],'type':r['type']} for r in c.execute('SELECT id,type FROM media WHERE user_id=?',(uid,))]}
+        if path=='/api/notifications/summary': return 200,notification_summary(c,uid)
         if path=='/api/notifications': return 200,{'notifications':[dict(r) for r in c.execute('SELECT id,text,seen,created FROM notices WHERE user_id=? ORDER BY id DESC LIMIT 100',(uid,))]}
         if path=='/api/export':
             return 200,{'email':u['email'],'profile':p,'settings':settings(c,uid),'sent_messages':[dict(r) for r in c.execute('SELECT id,connection_id,text,created FROM messages WHERE sender=?',(uid,))],'submitted_reports':[dict(r) for r in c.execute('SELECT target,reason,detail,status,created FROM reports WHERE reporter=?',(uid,))],'photos':p.get('photos',[]) if p else []}
@@ -270,7 +280,16 @@ def dispatch(method,path,data,c,u,p):
         c.execute('INSERT OR REPLACE INTO blocks VALUES(?,?,?)',(uid,oid,time.time()))
         low,high=sorted([uid,oid]); c.execute('UPDATE connections SET active=0 WHERE low_id=? AND high_id=?',(low,high)); return 200,{'ok':True}
     if path=='/api/notifications/read':
-        c.execute('UPDATE notices SET seen=1 WHERE user_id=?',(uid,)); return 200,{'ok':True}
+        category=data.get('category')
+        if category is None:
+            c.execute('UPDATE notices SET seen=1 WHERE user_id=?',(uid,))
+        else:
+            if category not in NOTICE_KINDS:raise ValueError('Invalid notification category.')
+            through=data.get('through_id')
+            if type(through) is not int or through<0:raise ValueError('Invalid notification cursor.')
+            texts=NOTICE_KINDS[category]
+            c.execute('UPDATE notices SET seen=1 WHERE user_id=? AND id<=? AND text IN ('+','.join('?' for _ in texts)+')',(uid,through,*texts))
+        return 200,{'ok':True}
     if path=='/api/support':
         subject=text(data,'subject',200,True); detail=text(data,'detail',3000,True)
         row=c.execute('INSERT INTO support_requests(user_id,subject,detail,created) VALUES(?,?,?,?)',(uid,subject,detail,time.time())); return 200,{'ok':True,'id':row.lastrowid}

@@ -18,6 +18,24 @@ class SocialTests(unittest.TestCase):
             p=profile();p.update(first_name=f'Member{i}',public_prompts=[{'question':'Ask me about…','answer':'Travel and books'}],visible_details=['languages'],languages='English',religion='Private belief')
             self.assertEqual(self.call(c,'profile',p)[0],200);result.append((c,self.call(c,'me')[1]['id']))
         return result
+    def test_notification_badges_isolated_and_cursor_safe(self):
+        import social
+        (a,aid),(b,bid)=self.accounts()
+        with server.connect() as c:
+            social.notify(c,aid,'Someone liked your profile.')
+            social.notify(c,aid,'Someone sent you a Rose.')
+            social.notify(c,aid,'You have a new message.')
+            social.notify(c,aid,'You have a new match.')
+        first=self.call(a,'notifications/summary')[1]
+        self.assertEqual(first['counts'],{'likes':2,'messages':1,'matches':1})
+        self.assertEqual(self.call(b,'notifications/summary')[1]['counts'],{'likes':0,'messages':0,'matches':0})
+        with server.connect() as c:social.notify(c,aid,'Someone liked your profile.')
+        self.assertEqual(self.call(a,'notifications/read',{'category':'likes','through_id':first['through_id']})[0],200)
+        self.assertEqual(self.call(a,'notifications/summary')[1]['counts'],{'likes':1,'messages':1,'matches':1})
+        self.assertEqual(self.call(a,'notifications/read',{'category':'invalid','through_id':0})[0],400)
+        self.call(a,'notifications/read',{})
+        self.assertEqual(self.call(a,'notifications/summary')[1]['counts'],{'likes':0,'messages':0,'matches':0})
+
     def test_password_change_revokes_all_sessions(self):
         (a,aid),(b,bid)=self.accounts()
         second=self.client()
