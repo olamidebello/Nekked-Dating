@@ -314,7 +314,20 @@ class Handler(BaseHTTPRequestHandler):
                     image=base64.b64decode(data['image'],validate=True)
                     validate_jpeg(image)
                     ident=secrets.token_hex(16); c.execute('INSERT INTO photos VALUES(?,?,?)',(ident,u['id'],image))
-                    return self.reply(200,{'id':ident})
+                    if p:
+                        p['photos']=[*p.get('photos',[]),ident]
+                        c.execute('UPDATE users SET profile=? WHERE id=?',(json.dumps(p),u['id']))
+                    return self.reply(200,{'id':ident,'attached':bool(p)})
+                if self.path=='/api/photos/order':
+                    ids=data.get('photos')
+                    owned={r[0] for r in c.execute('SELECT id FROM photos WHERE user_id=?',(u['id'],))}
+                    if not isinstance(ids,list) or any(not isinstance(x,str) for x in ids) or len(ids)!=len(set(ids)) or not set(ids)<=owned:
+                        raise ValueError('Invalid photo ownership or order.')
+                    if not p:return self.reply(409,{'error':'Save your profile once before setting a public picture.'})
+                    if set(ids)!=set(p.get('photos',[])):raise ValueError('Refresh your profile before reordering photos.')
+                    p['photos']=ids
+                    c.execute('UPDATE users SET profile=? WHERE id=?',(json.dumps(p),u['id']))
+                    return self.reply(200,{'ok':True})
                 if self.path=='/api/photos/delete':
                     c.execute('DELETE FROM photos WHERE id=? AND user_id=?',(data['id'],u['id']))
                     if u['profile']:

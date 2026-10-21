@@ -95,6 +95,22 @@ class APITests(unittest.TestCase):
         self.call(b,'logout',{}); self.assertEqual(self.call(b,'me')[0],401)
         self.assertEqual(self.call(b,'login',{'email':'bea@example.com','password':'wrong password 123'})[0],401)
         self.assertEqual(self.call(b,'login',{'email':'bea@example.com','password':'strong password 123'})[0],200)
+    def test_uploaded_photo_attaches_and_primary_order_persists(self):
+        import base64
+        a,b=self.client(),self.client()
+        for c,email in [(a,'upload-a@example.com'),(b,'upload-b@example.com')]:
+            self.call(c,'register',dict(email=email,password='strong password 123',adult=True))
+            self.call(c,'profile',profile())
+        image=base64.b64encode(bytes.fromhex('ffd8ffc00008080010001003ffd9')).decode()
+        first=self.call(a,'photos',{'image':image})[1]
+        second=self.call(a,'photos',{'image':image})[1]
+        self.assertTrue(first['attached'])
+        self.assertEqual(self.call(a,'me')[1]['profile']['photos'],[first['id'],second['id']])
+        self.assertEqual(self.call(b,'photos/order',{'photos':[first['id']]})[0],400)
+        self.assertEqual(self.call(a,'photos/order',{'photos':[second['id'],first['id']]})[0],200)
+        self.assertEqual(self.call(a,'me')[1]['profile']['photos'][0],second['id'])
+        self.assertEqual(self.call(a,'photos/order',{'photos':[first['id']]})[0],400)
+
     def test_photo_ownership_visibility_and_deletion(self):
         # Bounded JPEG frame fixture tests storage/authorization; image decode is a browser responsibility.
         import base64
